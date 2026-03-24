@@ -11,12 +11,14 @@ Author: Roni Das
 from __future__ import annotations
 
 from snowloader.connection import SnowConnection, SnowConnectionError
+from snowloader.loaders.incidents import IncidentLoader
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 __version__ = "0.1.0"
 
 __all__ = [
     "BaseSnowLoader",
+    "IncidentLoader",
     "SnowConnection",
     "SnowConnectionError",
     "SnowDocument",
