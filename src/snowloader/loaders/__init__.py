@@ -8,10 +8,12 @@ specific document types.
 
 from __future__ import annotations
 
+from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 
 __all__ = [
+    "CMDBLoader",
     "IncidentLoader",
     "KnowledgeBaseLoader",
 ]
