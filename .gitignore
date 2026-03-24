@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+.venv/
+venv/
+*.log
+.DS_Store
+
+# Project management files (internal use only)
+CLAUDE.md
+.claude/
+.status
+GETTING_STARTED.md
+docs/tasks/
