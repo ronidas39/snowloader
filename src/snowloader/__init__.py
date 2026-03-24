@@ -11,18 +11,24 @@ Author: Roni Das
 from __future__ import annotations
 
 from snowloader.connection import SnowConnection, SnowConnectionError
+from snowloader.loaders.catalog import CatalogLoader
+from snowloader.loaders.changes import ChangeLoader
 from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
+from snowloader.loaders.problems import ProblemLoader
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 __version__ = "0.1.0"
 
 __all__ = [
     "BaseSnowLoader",
+    "CatalogLoader",
+    "ChangeLoader",
     "CMDBLoader",
     "IncidentLoader",
     "KnowledgeBaseLoader",
+    "ProblemLoader",
     "SnowConnection",
     "SnowConnectionError",
     "SnowDocument",
