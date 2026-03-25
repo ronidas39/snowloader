@@ -47,8 +47,20 @@ class _LlamaIndexAdapter(BaseReader):
 
     _loader_class: type[BaseSnowLoader]
 
-    def __init__(self, connection: SnowConnection, **kwargs: Any) -> None:
+    _default_excluded_llm_keys: list[str] = ["sys_id"]
+
+    def __init__(
+        self,
+        connection: SnowConnection,
+        excluded_llm_metadata_keys: list[str] | None = None,
+        **kwargs: Any,
+    ) -> None:
         super().__init__()
+        self._excluded_keys = (
+            excluded_llm_metadata_keys
+            if excluded_llm_metadata_keys is not None
+            else self._default_excluded_llm_keys
+        )
         self._loader = self._loader_class(connection=connection, **kwargs)
 
     def load_data(self) -> list[Document]:
@@ -70,13 +82,12 @@ class _LlamaIndexAdapter(BaseReader):
         """
         return [self._to_document(d) for d in self._loader.load_since(since)]
 
-    @staticmethod
-    def _to_document(snow_doc: Any) -> Document:
+    def _to_document(self, snow_doc: Any) -> Document:
         """Convert a SnowDocument to a LlamaIndex Document."""
         return Document(
             text=snow_doc.page_content,
             metadata=snow_doc.metadata,
-            excluded_llm_metadata_keys=["sys_id"],
+            excluded_llm_metadata_keys=self._excluded_keys,
         )
 
 

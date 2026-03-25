@@ -93,7 +93,8 @@ class ProblemLoader(BaseSnowLoader):
         if cause_notes:
             lines.append(f"Root Cause: {cause_notes}")
 
-        if known_error and known_error.lower() == "true":
+        is_known_error = str(known_error).lower() == "true" if known_error else False
+        if is_known_error:
             lines.append("Known Error: Yes")
             if fix_notes:
                 lines.append(f"Fix: {fix_notes}")
@@ -123,7 +124,7 @@ class ProblemLoader(BaseSnowLoader):
             "priority": priority,
             "category": category,
             "assigned_to": assigned_to,
-            "known_error": known_error.lower() == "true" if known_error else False,
+            "known_error": is_known_error,
             "cmdb_ci": _raw_value(record.get("cmdb_ci")),
             "opened_at": opened_at,
             "resolved_at": resolved_at,

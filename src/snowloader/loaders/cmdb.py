@@ -19,6 +19,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from snowloader.connection import SnowConnection
 from snowloader.loaders.incidents import _display_value, _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 
@@ -65,16 +66,18 @@ class CMDBLoader(BaseSnowLoader):
 
     def __init__(
         self,
-        connection: Any,
+        connection: SnowConnection,
         ci_class: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
         include_relationships: bool = False,
+        max_relationship_workers: int = 2,
     ) -> None:
         super().__init__(connection=connection, query=query, fields=fields)
         if ci_class:
             self.table = ci_class
         self._include_relationships = include_relationships
+        self._max_relationship_workers = max_relationship_workers
 
     def _record_to_document(self, record: dict[str, Any]) -> SnowDocument:
         """Build a CI document with optional relationship graph.
@@ -197,7 +200,7 @@ class CMDBLoader(BaseSnowLoader):
         inbound: list[dict[str, str]] = []
 
         try:
-            with ThreadPoolExecutor(max_workers=2) as executor:
+            with ThreadPoolExecutor(max_workers=self._max_relationship_workers) as executor:
                 future_out = executor.submit(self._fetch_relationship_direction, sys_id, "outbound")
                 future_in = executor.submit(self._fetch_relationship_direction, sys_id, "inbound")
 

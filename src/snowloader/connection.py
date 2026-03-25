@@ -4,12 +4,14 @@ This module provides SnowConnection, the single point of contact between
 snowloader and the ServiceNow Table API. Every loader in the library routes
 its HTTP traffic through this class, which handles:
 
-    - Authentication (Basic auth or OAuth 2.0 password grant with auto-refresh)
+    - Authentication (Basic, OAuth 2.0 password/client-credentials, Bearer token)
     - Pagination (sysparm_limit / sysparm_offset with stable ordering)
     - Retry logic (exponential backoff for 429, 503, and transient errors)
     - Rate limiting (configurable delay between requests)
     - Input validation (URL format, page_size bounds, table names)
     - Session lifecycle (context manager support for clean shutdown)
+    - Thread-safe HTTP via a request lock
+    - Proxy and custom CA certificate support
 
 Author: Roni Das
 """
@@ -18,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from collections.abc import Generator
 from datetime import datetime
@@ -36,7 +39,7 @@ _MAX_PAGE_SIZE = 10000
 _MIN_PAGE_SIZE = 1
 
 # Regex for validating ServiceNow instance URLs
-_INSTANCE_URL_PATTERN = re.compile(r"^https?://.+")
+_INSTANCE_URL_PATTERN = re.compile(r"^https?://[a-zA-Z0-9][-a-zA-Z0-9.]+\.[a-zA-Z]{2,}")
 
 
 class SnowConnectionError(Exception):
@@ -63,15 +66,21 @@ class SnowConnectionError(Exception):
 class SnowConnection:
     """Manages a session against one ServiceNow instance.
 
-    All HTTP requests flow through the internal _request method, which
-    attaches the right auth headers, retries transient failures, and
-    raises SnowConnectionError on permanent errors.
+    Supports four authentication modes (checked in priority order):
 
-    Supports both basic auth and OAuth 2.0 password grant. OAuth tokens
-    are acquired lazily on the first request and refreshed automatically
-    when they expire.
+        1. **Bearer token** — pass a pre-obtained token directly via
+           ``token``. No user credentials needed. Useful when auth is
+           handled outside the library (SSO, external token service).
+        2. **OAuth 2.0 Client Credentials** — pass ``client_id`` and
+           ``client_secret`` without ``username``/``password``. Best for
+           server-to-server integrations with no human user involved.
+        3. **OAuth 2.0 Password Grant** — pass all four: ``client_id``,
+           ``client_secret``, ``username``, ``password``. Token is acquired
+           lazily on first request and refreshed on 401.
+        4. **Basic Auth** — pass ``username`` and ``password`` only.
+           Simplest; fine for development, not recommended for production.
 
-    Can be used as a context manager for clean session shutdown:
+    Can be used as a context manager for clean session shutdown::
 
         with SnowConnection(...) as conn:
             loader = IncidentLoader(connection=conn)
@@ -79,36 +88,47 @@ class SnowConnection:
 
     Args:
         instance_url: Full URL of the ServiceNow instance, e.g.
-            "https://mycompany.service-now.com". Trailing slashes
+            ``"https://mycompany.service-now.com"``. Trailing slashes
             are stripped automatically.
         username: ServiceNow user account for authentication.
         password: Password for the user account.
-        client_id: OAuth client ID. When provided together with
-            client_secret, the connection switches to OAuth mode.
+        client_id: OAuth client ID. Enables OAuth when combined with
+            ``client_secret``.
         client_secret: OAuth client secret.
-        page_size: Number of records to fetch per API call during
-            pagination. Defaults to 100, max allowed by SN is 10000.
-        timeout: HTTP request timeout in seconds. Defaults to 30.
-        max_retries: Maximum number of retry attempts for transient
-            failures (429, 502, 503, 504). Defaults to 3.
-        retry_backoff: Base delay in seconds between retries.
-            Doubles on each attempt (exponential backoff). Defaults to 1.0.
+        token: Pre-obtained Bearer token. When provided, all other
+            credentials are ignored.
+        page_size: Records per API call during pagination (1–10 000).
+            Defaults to 100.
+        timeout: HTTP request timeout in seconds. Defaults to 60.
+        max_retries: Retry attempts for transient failures (429, 502,
+            503, 504). Defaults to 3.
+        retry_backoff: Base delay (seconds) between retries; doubles
+            on each attempt. Defaults to 1.0.
         request_delay: Minimum seconds between consecutive API requests.
-            Helps avoid rate limiting on busy instances. Defaults to 0
-            (no delay). Set to 0.1 for ~600 req/min pacing.
+            Helps avoid rate limiting. Defaults to 0 (no delay).
+        display_value: Controls ``sysparm_display_value`` parameter.
+            ``"true"`` (default) returns human-readable labels for
+            reference fields. ``"false"`` returns raw values. ``"all"``
+            returns both ``{display_value, value}`` dicts.
+        proxy: Optional proxy URL, e.g. ``"http://proxy:8080"``.
+            Applied to all HTTP(S) requests.
+        verify: SSL verification. ``True`` (default) uses system CA
+            bundle. Pass a path string to a CA bundle file for custom
+            certificates. ``False`` disables verification (not
+            recommended for production).
 
     Raises:
         SnowConnectionError: If credentials are missing or invalid,
             or if instance_url is malformed.
 
     Example:
-        conn = SnowConnection(
-            instance_url="https://mycompany.service-now.com",
-            username="api_user",
-            password="api_pass",
-        )
-        for record in conn.get_records("incident", query="active=true"):
-            print(record["number"])
+        >>> conn = SnowConnection(
+        ...     instance_url="https://mycompany.service-now.com",
+        ...     username="api_user",
+        ...     password="api_pass",
+        ... )
+        >>> for record in conn.get_records("incident", query="active=true"):
+        ...     print(record["number"])
     """
 
     def __init__(
@@ -118,11 +138,15 @@ class SnowConnection:
         password: str | None = None,
         client_id: str | None = None,
         client_secret: str | None = None,
+        token: str | None = None,
         page_size: int = 100,
-        timeout: int = 30,
+        timeout: int = 60,
         max_retries: int = _DEFAULT_MAX_RETRIES,
         retry_backoff: float = _DEFAULT_RETRY_BACKOFF,
         request_delay: float = 0.0,
+        display_value: str = "true",
+        proxy: str | None = None,
+        verify: bool | str = True,
     ) -> None:
         # -- Validate inputs --
         if not instance_url or not instance_url.strip():
@@ -135,7 +159,8 @@ class SnowConnection:
         if not _INSTANCE_URL_PATTERN.match(cleaned_url):
             raise SnowConnectionError(
                 f"instance_url '{cleaned_url}' is not a valid HTTP(S) URL.",
-                detail="URL must start with http:// or https://",
+                detail="URL must start with http:// or https:// followed by "
+                "a valid domain (e.g. https://mycompany.service-now.com).",
             )
 
         if not _MIN_PAGE_SIZE <= page_size <= _MAX_PAGE_SIZE:
@@ -149,32 +174,60 @@ class SnowConnection:
                 f"timeout must be positive, got {timeout}.",
             )
 
+        if display_value not in ("true", "false", "all"):
+            raise SnowConnectionError(
+                f"display_value must be 'true', 'false', or 'all', got '{display_value}'.",
+            )
+
         self.instance_url = cleaned_url
         self.page_size = page_size
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.request_delay = request_delay
+        self.display_value = display_value
         self._last_request_time: float = 0.0
-        self._session = requests.Session()
+        self._request_lock = threading.Lock()
 
-        # -- Auth setup --
-        if client_id and client_secret and username and password:
+        # -- Session setup --
+        self._session = requests.Session()
+        self._session.verify = verify
+
+        if proxy:
+            self._session.proxies = {"http": proxy, "https": proxy}
+            logger.info("Using proxy %s for %s", proxy, self.instance_url)
+
+        # -- Auth setup (priority: token > client_credentials > password > basic) --
+        if token:
+            self.auth_type = "bearer"
+            self._access_token: str | None = token
+            logger.info("Configured bearer token auth for %s", self.instance_url)
+        elif client_id and client_secret and not username:
+            self.auth_type = "client_credentials"
+            self._client_id = client_id
+            self._client_secret = client_secret
+            self._access_token = None
+            logger.info("Configured OAuth client credentials for %s", self.instance_url)
+        elif client_id and client_secret and username and password:
             self.auth_type = "oauth"
             self._client_id = client_id
             self._client_secret = client_secret
             self._username = username
             self._password = password
-            self._access_token: str | None = None
-            logger.info("Configured OAuth authentication for %s", self.instance_url)
+            self._access_token = None
+            logger.info("Configured OAuth password grant for %s", self.instance_url)
         elif username and password:
             self.auth_type = "basic"
+            self._access_token = None
             self._session.auth = (username, password)
             logger.info("Configured basic auth for %s", self.instance_url)
         else:
             raise SnowConnectionError(
-                "SnowConnection requires at least username and password. "
-                "For OAuth, also provide client_id and client_secret.",
+                "SnowConnection requires credentials. Provide one of:\n"
+                "  - token (pre-obtained bearer token)\n"
+                "  - client_id + client_secret (OAuth client credentials)\n"
+                "  - client_id + client_secret + username + password (OAuth password grant)\n"
+                "  - username + password (basic auth)",
                 detail="Check your credentials and try again.",
             )
 
@@ -304,7 +357,7 @@ class SnowConnection:
         if "result" not in response_data:
             raise SnowConnectionError(
                 f"Unexpected API response for {table}/{sys_id}: missing 'result' key.",
-                detail=str(response_data)[:200],
+                detail=str(response_data)[:500],
             )
 
         return cast(dict[str, object], response_data["result"])
@@ -329,7 +382,7 @@ class SnowConnection:
         """
         params: dict[str, str] = {
             "sysparm_limit": str(self.page_size),
-            "sysparm_display_value": "true",
+            "sysparm_display_value": self.display_value,
         }
 
         query_parts: list[str] = []
@@ -348,11 +401,10 @@ class SnowConnection:
         return params
 
     def _acquire_oauth_token(self) -> str:
-        """Acquire an OAuth 2.0 access token using the password grant flow.
+        """Acquire an OAuth 2.0 access token.
 
-        ServiceNow's OAuth endpoint is at /oauth_token.do. This method
-        sends client credentials + user credentials and extracts the
-        access_token from the response.
+        Supports both password grant (when username/password are set)
+        and client credentials grant (when only client_id/secret are set).
 
         Returns:
             The access token string.
@@ -362,18 +414,27 @@ class SnowConnection:
         """
         token_url = f"{self.instance_url}/oauth_token.do"
 
-        logger.debug("Requesting OAuth token from %s", token_url)
+        if self.auth_type == "client_credentials":
+            grant_data: dict[str, str] = {
+                "grant_type": "client_credentials",
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+            }
+            logger.debug("Requesting OAuth token (client_credentials) from %s", token_url)
+        else:
+            grant_data = {
+                "grant_type": "password",
+                "client_id": self._client_id,
+                "client_secret": self._client_secret,
+                "username": self._username,
+                "password": self._password,
+            }
+            logger.debug("Requesting OAuth token (password grant) from %s", token_url)
 
         try:
             resp = self._session.post(
                 token_url,
-                data={
-                    "grant_type": "password",
-                    "client_id": self._client_id,
-                    "client_secret": self._client_secret,
-                    "username": self._username,
-                    "password": self._password,
-                },
+                data=grant_data,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
                 timeout=self.timeout,
             )
@@ -384,12 +445,11 @@ class SnowConnection:
             ) from exc
 
         if not resp.ok:
-            detail = resp.text[:300] if resp.text else "No response body"
+            detail = resp.text[:500] if resp.text else "No response body"
             raise SnowConnectionError(
                 f"OAuth token request returned {resp.status_code}.",
                 status_code=resp.status_code,
-                detail=f"Verify client_id, client_secret, username, and "
-                f"password are correct. Response: {detail}",
+                detail=f"Verify your OAuth credentials are correct. Response: {detail}",
             )
 
         try:
@@ -397,7 +457,7 @@ class SnowConnection:
         except ValueError as exc:
             raise SnowConnectionError(
                 "OAuth token response was not valid JSON.",
-                detail=resp.text[:200],
+                detail=resp.text[:500],
             ) from exc
 
         access_token = token_data.get("access_token")
@@ -412,7 +472,7 @@ class SnowConnection:
 
     def _ensure_oauth_token(self) -> None:
         """Ensure we have a valid OAuth token, acquiring one if needed."""
-        if self.auth_type != "oauth":
+        if self.auth_type not in ("oauth", "client_credentials"):
             return
         if self._access_token is None:
             self._access_token = self._acquire_oauth_token()
@@ -435,6 +495,10 @@ class SnowConnection:
     ) -> dict[str, Any]:
         """Send an HTTP request with retry logic and error handling.
 
+        Thread-safe: uses a lock around the HTTP call so concurrent
+        threads (e.g. CMDB relationship fetching) do not corrupt the
+        shared requests.Session state.
+
         Retries transient failures (429, 502, 503, 504) with exponential
         backoff. Respects Retry-After headers from 429 responses. Raises
         SnowConnectionError on permanent failures with structured details.
@@ -454,7 +518,7 @@ class SnowConnection:
         self._throttle()
 
         headers: dict[str, str] = {"Accept": "application/json"}
-        if self.auth_type == "oauth" and self._access_token:
+        if self.auth_type in ("oauth", "client_credentials", "bearer") and self._access_token:
             headers["Authorization"] = f"Bearer {self._access_token}"
 
         last_error: SnowConnectionError | None = None
@@ -475,27 +539,29 @@ class SnowConnection:
             logger.debug("%s %s params=%s (attempt %d)", method, url, params, attempt)
 
             try:
-                resp = self._session.request(
-                    method=method,
-                    url=url,
-                    params=params,
-                    headers=headers,
-                    timeout=self.timeout,
-                )
+                with self._request_lock:
+                    resp = self._session.request(
+                        method=method,
+                        url=url,
+                        params=params,
+                        headers=headers,
+                        timeout=self.timeout,
+                    )
                 self._last_request_time = time.monotonic()
             except requests.ConnectionError as exc:
                 last_error = SnowConnectionError(
                     f"Connection failed to {self.instance_url}: {exc}",
                     detail="Check your network connection and instance URL. "
                     "The instance may be hibernating (dev instances sleep "
-                    "after inactivity — wake it by visiting the URL in a browser).",
+                    "after inactivity — wake it by visiting the URL in a "
+                    "browser).",
                 )
                 continue
             except requests.Timeout:
                 last_error = SnowConnectionError(
                     f"Request timed out after {self.timeout}s for {method} {url}",
-                    detail="The instance may be under heavy load. Try increasing "
-                    "the timeout parameter or reducing page_size.",
+                    detail="The instance may be under heavy load. Try "
+                    "increasing the timeout parameter or reducing page_size.",
                 )
                 continue
             except requests.RequestException as exc:
@@ -513,8 +579,9 @@ class SnowConnection:
                     raise SnowConnectionError(
                         f"API returned non-JSON response for {method} {url}",
                         status_code=resp.status_code,
-                        detail=f"Content-Type: {resp.headers.get('Content-Type')}. "
-                        f"Body preview: {resp.text[:200]}",
+                        detail=f"Content-Type: "
+                        f"{resp.headers.get('Content-Type')}. "
+                        f"Body preview: {resp.text[:500]}",
                     ) from exc
 
             # -- Retryable errors --
@@ -523,10 +590,13 @@ class SnowConnection:
                 if resp.status_code == 429 and retry_after:
                     try:
                         wait = float(retry_after)
-                        logger.warning("Rate limited (429). Server says wait %.1fs.", wait)
+                        logger.warning(
+                            "Rate limited (429). Server says wait %.1fs.",
+                            wait,
+                        )
                         time.sleep(wait)
                     except ValueError:
-                        pass  # Non-numeric Retry-After, fall through to backoff
+                        pass  # Non-numeric Retry-After, use backoff
 
                 detail = self._extract_error_detail(resp)
                 last_error = SnowConnectionError(
@@ -537,7 +607,11 @@ class SnowConnection:
                 continue
 
             # -- OAuth token expired: re-acquire and retry once --
-            if resp.status_code == 401 and self.auth_type == "oauth" and attempt == 0:
+            if (
+                resp.status_code == 401
+                and self.auth_type in ("oauth", "client_credentials")
+                and attempt == 0
+            ):
                 logger.warning("Got 401, attempting OAuth token refresh.")
                 try:
                     self._access_token = self._acquire_oauth_token()
@@ -557,8 +631,8 @@ class SnowConnection:
         # All retries exhausted
         if last_error:
             raise SnowConnectionError(
-                f"All {self.max_retries} retries exhausted for {method} {url}. "
-                f"Last error: {last_error}",
+                f"All {self.max_retries} retries exhausted for "
+                f"{method} {url}. Last error: {last_error}",
                 status_code=last_error.status_code,
                 detail=last_error.detail,
             )
@@ -592,5 +666,5 @@ class SnowConnection:
             pass
         # Fallback to raw text
         if resp.text:
-            return resp.text[:500]
+            return resp.text[:1000]
         return f"HTTP {resp.status_code} (no response body)"

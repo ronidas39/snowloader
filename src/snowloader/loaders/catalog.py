@@ -85,7 +85,7 @@ class CatalogLoader(BaseSnowLoader):
             "category": category,
             "catalog": catalog,
             "price": price,
-            "active": active.lower() == "true" if active else False,
+            "active": str(active).lower() == "true" if active else False,
             "sys_created_on": _display_value(record.get("sys_created_on")),
             "sys_updated_on": _display_value(record.get("sys_updated_on")),
         }
