@@ -17,6 +17,9 @@ venv/
 *.log
 .DS_Store
 
+# Documentation build output
+docs/_build/
+
 # Project management files (internal use only)
 CLAUDE.md
 .claude/
