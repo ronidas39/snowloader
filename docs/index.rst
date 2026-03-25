@@ -1,6 +1,19 @@
 snowloader
 ==========
 
+*by* **Roni Das**
+
+|pypi| |python| |license|
+
+.. |pypi| image:: https://img.shields.io/pypi/v/snowloader.svg
+   :target: https://pypi.org/project/snowloader/
+
+.. |python| image:: https://img.shields.io/pypi/pyversions/snowloader.svg
+   :target: https://pypi.org/project/snowloader/
+
+.. |license| image:: https://img.shields.io/badge/License-MIT-blue.svg
+   :target: https://opensource.org/licenses/MIT
+
 **Comprehensive ServiceNow data loader for AI/LLM pipelines.**
 
 snowloader pulls data from ServiceNow — Incidents, Knowledge Base, CMDB,
