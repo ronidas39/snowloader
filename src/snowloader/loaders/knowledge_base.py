@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from snowloader.loaders.incidents import _display_value
+from snowloader.loaders._field_utils import display_value as _display_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 from snowloader.utils.html_cleaner import clean_html
 

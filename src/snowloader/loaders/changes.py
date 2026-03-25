@@ -13,7 +13,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from snowloader.loaders.incidents import _display_value, _raw_value
+from snowloader.loaders._field_utils import display_value as _display_value
+from snowloader.loaders._field_utils import raw_value as _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)

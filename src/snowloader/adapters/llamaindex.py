@@ -33,7 +33,7 @@ from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 from snowloader.loaders.problems import ProblemLoader
-from snowloader.models import BaseSnowLoader
+from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +82,7 @@ class _LlamaIndexAdapter(BaseReader):
         """
         return [self._to_document(d) for d in self._loader.load_since(since)]
 
-    def _to_document(self, snow_doc: Any) -> Document:
+    def _to_document(self, snow_doc: SnowDocument) -> Document:
         """Convert a SnowDocument to a LlamaIndex Document."""
         return Document(
             text=snow_doc.page_content,

@@ -13,7 +13,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from snowloader.loaders.incidents import _display_value
+from snowloader.loaders._field_utils import display_value as _display_value
+from snowloader.loaders._field_utils import parse_boolean
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class CatalogLoader(BaseSnowLoader):
             "category": category,
             "catalog": catalog,
             "price": price,
-            "active": str(active).lower() == "true" if active else False,
+            "active": parse_boolean(active),
             "sys_created_on": _display_value(record.get("sys_created_on")),
             "sys_updated_on": _display_value(record.get("sys_updated_on")),
         }

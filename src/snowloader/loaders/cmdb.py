@@ -16,11 +16,12 @@ Author: Roni Das
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from snowloader.connection import SnowConnection
-from snowloader.loaders.incidents import _display_value, _raw_value
+from snowloader.loaders._field_utils import display_value as _display_value
+from snowloader.loaders._field_utils import raw_value as _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
@@ -199,33 +200,29 @@ class CMDBLoader(BaseSnowLoader):
         outbound: list[dict[str, str]] = []
         inbound: list[dict[str, str]] = []
 
-        try:
-            with ThreadPoolExecutor(max_workers=self._max_relationship_workers) as executor:
-                future_out = executor.submit(self._fetch_relationship_direction, sys_id, "outbound")
-                future_in = executor.submit(self._fetch_relationship_direction, sys_id, "inbound")
+        with ThreadPoolExecutor(max_workers=self._max_relationship_workers) as executor:
+            future_out = executor.submit(self._fetch_relationship_direction, sys_id, "outbound")
+            future_in = executor.submit(self._fetch_relationship_direction, sys_id, "inbound")
 
-                for future in as_completed([future_out, future_in]):
-                    try:
-                        future.result()
-                    except SnowConnectionError:
-                        logger.warning(
-                            "Failed to fetch relationships for CI %s. "
-                            "Continuing without relationship data.",
-                            sys_id,
-                            exc_info=True,
-                        )
+            # Extract results individually — a failure in one direction
+            # should not discard the other direction's data.
+            try:
+                outbound = future_out.result()
+            except SnowConnectionError:
+                logger.warning(
+                    "Failed to fetch outbound relationships for CI %s.",
+                    sys_id,
+                    exc_info=True,
+                )
 
-                if not future_out.exception():
-                    outbound = future_out.result()
-                if not future_in.exception():
-                    inbound = future_in.result()
-
-        except SnowConnectionError:
-            logger.warning(
-                "Relationship fetch failed for CI %s. Continuing.",
-                sys_id,
-                exc_info=True,
-            )
+            try:
+                inbound = future_in.result()
+            except SnowConnectionError:
+                logger.warning(
+                    "Failed to fetch inbound relationships for CI %s.",
+                    sys_id,
+                    exc_info=True,
+                )
 
         return outbound, inbound
 

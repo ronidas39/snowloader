@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from snowloader.connection import SnowConnection
+from snowloader.connection import SnowConnection, SnowConnectionError
 
 logger = logging.getLogger(__name__)
 
@@ -214,8 +214,6 @@ class BaseSnowLoader:
             List of journal entry dicts with value, element, sys_created_on,
             and sys_created_by fields. Empty list on failure.
         """
-        from snowloader.connection import SnowConnectionError
-
         try:
             query = f"element_id={sys_id}^elementINwork_notes,comments"
             records = self._connection.get_records(

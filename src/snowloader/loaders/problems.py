@@ -14,7 +14,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from snowloader.loaders.incidents import _display_value, _raw_value
+from snowloader.loaders._field_utils import display_value as _display_value
+from snowloader.loaders._field_utils import parse_boolean
+from snowloader.loaders._field_utils import raw_value as _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
@@ -93,7 +95,7 @@ class ProblemLoader(BaseSnowLoader):
         if cause_notes:
             lines.append(f"Root Cause: {cause_notes}")
 
-        is_known_error = str(known_error).lower() == "true" if known_error else False
+        is_known_error = parse_boolean(known_error)
         if is_known_error:
             lines.append("Known Error: Yes")
             if fix_notes:

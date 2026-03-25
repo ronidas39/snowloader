@@ -19,62 +19,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from snowloader.loaders._field_utils import display_value as _display_value
+from snowloader.loaders._field_utils import raw_value as _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
-
-
-def _display_value(field: Any) -> str:
-    """Extract the human-readable display value from a field.
-
-    ServiceNow reference fields come back in two possible shapes depending
-    on the sysparm_display_value setting:
-        - As a dict: {"display_value": "John Smith", "value": "abc123"}
-        - As a plain string: "John Smith" or "abc123"
-        - As None if the field is empty
-
-    This function normalizes all three into a simple string.
-
-    Args:
-        field: Raw field value from the API response.
-
-    Returns:
-        The display string, or empty string for None/empty values.
-    """
-    if field is None:
-        return ""
-    if isinstance(field, dict):
-        return str(field.get("display_value", ""))
-    return str(field)
-
-
-def _raw_value(field: Any) -> str:
-    """Extract the underlying sys_id or raw value from a field.
-
-    Counterpart to _display_value(). When we need the actual sys_id behind
-    a reference field (for linking, dedup, etc.), this pulls the value key
-    from the dict format. With sysparm_display_value=true, reference fields
-    arrive as {"display_value": "...", "link": "https://.../table/SYS_ID"},
-    so we fall back to extracting the sys_id from the link URL.
-
-    Args:
-        field: Raw field value from the API response.
-
-    Returns:
-        The raw value string, or empty string for None/empty values.
-    """
-    if field is None:
-        return ""
-    if isinstance(field, dict):
-        # sysparm_display_value=all → {"display_value": "...", "value": "sys_id"}
-        if "value" in field:
-            return str(field["value"])
-        # sysparm_display_value=true → {"display_value": "...", "link": "https://.../sys_id"}
-        link = str(field.get("link", ""))
-        if link:
-            return link.rsplit("/", 1)[-1]
-        return str(field.get("display_value", ""))
-    return str(field)
 
 
 class IncidentLoader(BaseSnowLoader):
