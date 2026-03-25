@@ -189,6 +189,10 @@ Contributions are welcome! Please:
    ```
 5. Open a pull request
 
+## Author
+
+Created and maintained by **[Roni Das](https://github.com/ronidas39)**.
+
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.

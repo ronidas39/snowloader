@@ -33,6 +33,8 @@ Key features:
 - **Production-grade** — retry with backoff, rate limiting, thread safety, proxy support
 - **Fully typed** — PEP 561 compliant with ``py.typed`` marker
 
+Created by **Roni Das** · `GitHub <https://github.com/ronidas39>`_ · `PyPI <https://pypi.org/project/snowloader/>`_
+
 .. toctree::
    :maxdepth: 2
    :caption: User Guide
