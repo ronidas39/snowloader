@@ -177,7 +177,9 @@ class BaseSnowLoader:
 
         page_content = "\n".join(content_parts)
 
-        # If journals are requested, fetch and append them
+        # If journals are requested, fetch and append them.
+        # Journal fetch is resilient — failures are logged, not raised,
+        # so a single inaccessible journal table does not crash the load.
         sys_id = str(record.get("sys_id", ""))
         if self._include_journals and sys_id:
             journals = self._fetch_journals(sys_id)
@@ -201,20 +203,34 @@ class BaseSnowLoader:
         separate table linked by element_id. This method queries that
         table for all entries belonging to the given record.
 
+        This method is resilient: if the journal table is inaccessible
+        (permissions, network error, etc.), it logs a warning and returns
+        an empty list instead of raising an exception.
+
         Args:
             sys_id: The sys_id of the parent record.
 
         Returns:
             List of journal entry dicts with value, element, sys_created_on,
-            and sys_created_by fields.
+            and sys_created_by fields. Empty list on failure.
         """
-        query = f"element_id={sys_id}^elementINwork_notes,comments"
-        records = self._connection.get_records(
-            table="sys_journal_field",
-            query=query,
-            fields=["value", "element", "sys_created_on", "sys_created_by"],
-        )
-        return list(records)
+        from snowloader.connection import SnowConnectionError
+
+        try:
+            query = f"element_id={sys_id}^elementINwork_notes,comments"
+            records = self._connection.get_records(
+                table="sys_journal_field",
+                query=query,
+                fields=["value", "element", "sys_created_on", "sys_created_by"],
+            )
+            return list(records)
+        except SnowConnectionError:
+            logger.warning(
+                "Failed to fetch journals for record %s. Continuing without journal entries.",
+                sys_id,
+                exc_info=True,
+            )
+            return []
 
     def _format_journals(self, journals: list[dict[str, Any]]) -> str:
         """Turn a list of journal entry dicts into a readable text block.

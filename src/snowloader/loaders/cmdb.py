@@ -16,6 +16,7 @@ Author: Roni Das
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
 from snowloader.loaders.incidents import _display_value, _raw_value
@@ -178,6 +179,11 @@ class CMDBLoader(BaseSnowLoader):
         the child). Inbound means this CI is the child (something else
         depends on or contains it).
 
+        Uses concurrent threads to fetch both directions in parallel,
+        roughly halving the wall-clock time per CI. Resilient: if the
+        relationship table is inaccessible, logs a warning and returns
+        empty lists.
+
         Args:
             sys_id: The sys_id of the CI to look up relationships for.
 
@@ -185,8 +191,39 @@ class CMDBLoader(BaseSnowLoader):
             Tuple of (outbound_list, inbound_list), where each entry is
             a dict with "target", "target_sys_id", "type", and "direction".
         """
-        outbound = self._fetch_relationship_direction(sys_id, direction="outbound")
-        inbound = self._fetch_relationship_direction(sys_id, direction="inbound")
+        from snowloader.connection import SnowConnectionError
+
+        outbound: list[dict[str, str]] = []
+        inbound: list[dict[str, str]] = []
+
+        try:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                future_out = executor.submit(self._fetch_relationship_direction, sys_id, "outbound")
+                future_in = executor.submit(self._fetch_relationship_direction, sys_id, "inbound")
+
+                for future in as_completed([future_out, future_in]):
+                    try:
+                        future.result()
+                    except SnowConnectionError:
+                        logger.warning(
+                            "Failed to fetch relationships for CI %s. "
+                            "Continuing without relationship data.",
+                            sys_id,
+                            exc_info=True,
+                        )
+
+                if not future_out.exception():
+                    outbound = future_out.result()
+                if not future_in.exception():
+                    inbound = future_in.result()
+
+        except SnowConnectionError:
+            logger.warning(
+                "Relationship fetch failed for CI %s. Continuing.",
+                sys_id,
+                exc_info=True,
+            )
+
         return outbound, inbound
 
     def _fetch_relationship_direction(self, sys_id: str, direction: str) -> list[dict[str, str]]:
