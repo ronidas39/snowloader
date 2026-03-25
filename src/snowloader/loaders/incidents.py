@@ -53,7 +53,9 @@ def _raw_value(field: Any) -> str:
 
     Counterpart to _display_value(). When we need the actual sys_id behind
     a reference field (for linking, dedup, etc.), this pulls the value key
-    from the dict format, or just stringifies plain values.
+    from the dict format. With sysparm_display_value=true, reference fields
+    arrive as {"display_value": "...", "link": "https://.../table/SYS_ID"},
+    so we fall back to extracting the sys_id from the link URL.
 
     Args:
         field: Raw field value from the API response.
@@ -64,7 +66,14 @@ def _raw_value(field: Any) -> str:
     if field is None:
         return ""
     if isinstance(field, dict):
-        return str(field.get("value", ""))
+        # sysparm_display_value=all → {"display_value": "...", "value": "sys_id"}
+        if "value" in field:
+            return str(field["value"])
+        # sysparm_display_value=true → {"display_value": "...", "link": "https://.../sys_id"}
+        link = str(field.get("link", ""))
+        if link:
+            return link.rsplit("/", 1)[-1]
+        return str(field.get("display_value", ""))
     return str(field)
 
 

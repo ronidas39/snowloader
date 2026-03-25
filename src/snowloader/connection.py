@@ -203,6 +203,7 @@ class SnowConnection:
         """
         params: dict[str, str] = {
             "sysparm_limit": str(self.page_size),
+            "sysparm_display_value": "true",
         }
 
         # Build up the query string piece by piece. The ordering suffix
