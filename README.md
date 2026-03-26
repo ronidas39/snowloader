@@ -1,6 +1,10 @@
-# snowloader
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/logo.png" alt="snowloader" width="150">
+</p>
 
-**Created by [Roni Das](https://github.com/ronidas39)**
+<h1 align="center">snowloader</h1>
+
+<p align="center"><strong>Created by <a href="https://github.com/ronidas39">Roni Das</a></strong></p>
 
 [![PyPI version](https://img.shields.io/pypi/v/snowloader.svg)](https://pypi.org/project/snowloader/)
 [![Downloads](https://img.shields.io/pypi/dm/snowloader.svg)](https://pypistats.org/packages/snowloader)

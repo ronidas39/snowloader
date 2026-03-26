@@ -61,8 +61,8 @@ html_title = "snowloader"
 html_static_path = ["_static"]
 
 html_theme_options = {
-    "light_logo": "logo-light.svg",
-    "dark_logo": "logo-dark.svg",
+    "light_logo": "logo.png",
+    "dark_logo": "logo.png",
     "sidebar_hide_name": False,
     "navigation_with_keys": True,
     "footer_icons": [
