@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snowloader"
-version = "0.1.0"
+version = "0.1.1"
 description = "Comprehensive ServiceNow data loader for AI/LLM pipelines — Incidents, CMDB, KB, Changes, Catalog & more. Works with LangChain & LlamaIndex."
 readme = "README.md"
 license = {text = "MIT"}

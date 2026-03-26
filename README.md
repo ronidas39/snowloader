@@ -1,6 +1,9 @@
 # snowloader
 
+**Created by [Roni Das](https://github.com/ronidas39)**
+
 [![PyPI version](https://img.shields.io/pypi/v/snowloader.svg)](https://pypi.org/project/snowloader/)
+[![Downloads](https://img.shields.io/pypi/dm/snowloader.svg)](https://pypistats.org/packages/snowloader)
 [![Python versions](https://img.shields.io/pypi/pyversions/snowloader.svg)](https://pypi.org/project/snowloader/)
 [![CI](https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg)](https://github.com/ronidas39/snowloader/actions/workflows/ci.yml)
 [![Documentation](https://readthedocs.org/projects/snowloader/badge/?version=latest)](https://snowloader.readthedocs.io)

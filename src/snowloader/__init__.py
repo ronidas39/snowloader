@@ -19,7 +19,7 @@ from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 from snowloader.loaders.problems import ProblemLoader
 from snowloader.models import BaseSnowLoader, SnowDocument
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "BaseSnowLoader",
