@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "llama-index-readers-snowloader"
+version = "0.1.0"
+description = "ServiceNow data reader for LlamaIndex — load Incidents, CMDB, KB, Changes, Problems, and Catalog into LlamaIndex Documents."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Roni Das", email = "roni@totaltechnologyzone.com"},
+]
+keywords = [
+    "servicenow", "llamaindex", "llama-index", "rag", "llm",
+    "document-loader", "reader", "itsm", "cmdb", "incidents",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "llama-index-core>=0.11.0",
+    "snowloader>=0.1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ronidas39/snowloader"
+Documentation = "https://snowloader.readthedocs.io"
+Repository = "https://github.com/ronidas39/snowloader"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llama_index"]
+
+[tool.llamahub]
+contains_example = false
+import_path = "llama_index.readers.snowloader"
+
+[tool.llamahub.class_authors]
+ServiceNowIncidentReader = "ronidas39"
+ServiceNowKBReader = "ronidas39"
+ServiceNowCMDBReader = "ronidas39"
+ServiceNowChangeReader = "ronidas39"
+ServiceNowProblemReader = "ronidas39"
+ServiceNowCatalogReader = "ronidas39"
