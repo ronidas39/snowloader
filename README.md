@@ -85,6 +85,26 @@ from snowloader import (
 )
 ```
 
+## Journal Entries (Work Notes & Comments)
+
+Include the full investigation history from `sys_journal_field`:
+
+```python
+loader = IncidentLoader(connection=conn, query="active=true", include_journals=True)
+for doc in loader.lazy_load():
+    print(doc.page_content)
+    # Incident: INC0000007
+    # Summary: Need access to sales DB
+    # ...
+    # [work_notes] 2024-06-01 09:15:00 by alice
+    # Restarted Exchange service, monitoring.
+    #
+    # [comments] 2024-06-01 09:20:00 by alice
+    # We are working on the issue.
+```
+
+Also works with `ChangeLoader` and `ProblemLoader`.
+
 ## LangChain Adapter
 
 ```python
