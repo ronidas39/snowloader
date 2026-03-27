@@ -4,7 +4,7 @@
 
 <h1 align="center">snowloader</h1>
 
-<p align="center"><strong>Created by <a href="https://github.com/ronidas39">Roni Das</a></strong></p>
+<p align="center"><strong>Created by <a href="https://github.com/ronidas39">Roni Das</a></strong> · <a href="mailto:thetotaltechnology@gmail.com">thetotaltechnology@gmail.com</a></p>
 
 [![PyPI version](https://img.shields.io/pypi/v/snowloader.svg)](https://pypi.org/project/snowloader/)
 [![Downloads](https://img.shields.io/pypi/dm/snowloader.svg)](https://pypistats.org/packages/snowloader)
@@ -218,7 +218,7 @@ Contributions are welcome! Please:
 
 ## Author
 
-Created and maintained by **[Roni Das](https://github.com/ronidas39)**.
+Created and maintained by **[Roni Das](https://github.com/ronidas39)** — [thetotaltechnology@gmail.com](mailto:thetotaltechnology@gmail.com)
 
 ## License
 

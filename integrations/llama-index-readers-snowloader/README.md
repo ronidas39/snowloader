@@ -96,6 +96,10 @@ conn = SnowConnection(instance_url="...", client_id="...", client_secret="...",
 conn = SnowConnection(instance_url="...", token="eyJhbG...")
 ```
 
+## Author
+
+Created and maintained by **[Roni Das](https://github.com/ronidas39)** — [thetotaltechnology@gmail.com](mailto:thetotaltechnology@gmail.com)
+
 ## Links
 
 - [snowloader on PyPI](https://pypi.org/project/snowloader/)

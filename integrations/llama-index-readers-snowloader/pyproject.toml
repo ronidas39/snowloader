@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Roni Das", email = "roni@totaltechnologyzone.com"},
+    {name = "Roni Das", email = "thetotaltechnology@gmail.com"},
 ]
 keywords = [
     "servicenow", "llamaindex", "llama-index", "rag", "llm",
