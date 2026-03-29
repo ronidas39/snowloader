@@ -1,7 +1,7 @@
 snowloader
 ==========
 
-*by* **Roni Das**
+*by* **Roni Das** · `thetotaltechnology@gmail.com <mailto:thetotaltechnology@gmail.com>`_
 
 |pypi| |python| |license|
 
