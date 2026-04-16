@@ -1,14 +1,14 @@
 """Live integration tests against a real ServiceNow developer instance.
 
-These tests hit the actual ServiceNow Table API — no mocking. They verify
+These tests hit the actual ServiceNow Table API - no mocking. They verify
 that the full pipeline (connection → loader → adapter) works end-to-end
 with real data, real pagination, real reference fields, and real display
 values.
 
 Requires environment variables:
-    SNOW_INSTANCE  — e.g. https://dev270102.service-now.com
-    SNOW_USER      — e.g. admin
-    SNOW_PASS      — e.g. password
+    SNOW_INSTANCE  - e.g. https://dev270102.service-now.com
+    SNOW_USER      - e.g. admin
+    SNOW_PASS      - e.g. password
 
 Run with:
     pytest tests/integration/test_live.py -x --tb=short -v
@@ -104,7 +104,7 @@ def test_connection_empty_result(conn: SnowConnection) -> None:
 
 
 # ===================================================================
-# 2. IncidentLoader — real data
+# 2. IncidentLoader - real data
 # ===================================================================
 
 
@@ -131,7 +131,7 @@ def test_incident_display_values_resolved(conn: SnowConnection) -> None:
     doc = docs[0]
     text = doc.page_content
 
-    # State should be a word like "New", "In Progress", "Closed" — not "1", "2", "7"
+    # State should be a word like "New", "In Progress", "Closed" - not "1", "2", "7"
     state = doc.metadata.get("state", "")
     assert state, "State should not be empty"
     assert not state.isdigit(), f"State '{state}' looks like a raw value, not a display value"
@@ -198,7 +198,7 @@ def test_incident_metadata_has_raw_cmdb_ci(conn: SnowConnection) -> None:
 
 
 # ===================================================================
-# 3. KnowledgeBaseLoader — HTML cleaning
+# 3. KnowledgeBaseLoader - HTML cleaning
 # ===================================================================
 
 
@@ -231,7 +231,7 @@ def test_kb_html_is_cleaned(conn: SnowConnection) -> None:
 
 
 # ===================================================================
-# 4. CMDBLoader — relationships
+# 4. CMDBLoader - relationships
 # ===================================================================
 
 
@@ -414,7 +414,7 @@ def test_delta_sync_far_future_returns_empty(conn: SnowConnection) -> None:
 
 
 # ===================================================================
-# 9. LangChain adapter — real data
+# 9. LangChain adapter - real data
 # ===================================================================
 
 
@@ -492,7 +492,7 @@ def test_langchain_adapter_all_loaders(conn: SnowConnection) -> None:
 
 
 # ===================================================================
-# 10. LlamaIndex adapter — real data
+# 10. LlamaIndex adapter - real data
 # ===================================================================
 
 

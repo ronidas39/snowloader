@@ -1,7 +1,7 @@
 """End-to-end smoke tests for the full snowloader pipeline.
 
-These tests wire the entire stack together — SnowConnection through every
-loader through both framework adapters — against a fake ServiceNow API built
+These tests wire the entire stack together - SnowConnection through every
+loader through both framework adapters - against a fake ServiceNow API built
 with the ``responses`` library. The mock data is realistic and exercises every
 code path:
 
@@ -236,7 +236,7 @@ JOURNALS = [
 
 
 # ===================================================================
-# 1. Pagination — multiple pages of results
+# 1. Pagination - multiple pages of results
 # ===================================================================
 
 
@@ -249,7 +249,7 @@ def test_pagination_fetches_all_pages() -> None:
     responses.add(responses.GET, f"{TABLE_API}/incident", json={"result": [INCIDENTS[0]]})
     # Page 2: one record (signals last page because count < page_size=1 is false, count==1)
     responses.add(responses.GET, f"{TABLE_API}/incident", json={"result": [INCIDENTS[1]]})
-    # Page 3: empty — signals end
+    # Page 3: empty - signals end
     responses.add(responses.GET, f"{TABLE_API}/incident", json={"result": []})
 
     loader = IncidentLoader(connection=conn)
@@ -265,7 +265,7 @@ def test_pagination_fetches_all_pages() -> None:
 
 
 # ===================================================================
-# 2. IncidentLoader — full content + metadata verification
+# 2. IncidentLoader - full content + metadata verification
 # ===================================================================
 
 
@@ -340,7 +340,7 @@ def test_incident_display_value_extraction() -> None:
 
 
 # ===================================================================
-# 3. KnowledgeBaseLoader — HTML cleaning
+# 3. KnowledgeBaseLoader - HTML cleaning
 # ===================================================================
 
 
@@ -382,7 +382,7 @@ def test_kb_metadata() -> None:
 
 
 # ===================================================================
-# 4. CMDBLoader — relationships, ci_class override
+# 4. CMDBLoader - relationships, ci_class override
 # ===================================================================
 
 
@@ -502,7 +502,7 @@ def test_change_full_document() -> None:
 
 
 # ===================================================================
-# 6. ProblemLoader — known error + boolean + root cause
+# 6. ProblemLoader - known error + boolean + root cause
 # ===================================================================
 
 
@@ -541,7 +541,7 @@ def test_problem_without_known_error() -> None:
 
 
 # ===================================================================
-# 7. CatalogLoader — active boolean
+# 7. CatalogLoader - active boolean
 # ===================================================================
 
 
@@ -559,7 +559,7 @@ def test_catalog_active_and_inactive() -> None:
     assert docs[0].metadata["table"] == "sc_cat_item"
     assert docs[0].metadata["source"].startswith("servicenow://sc_cat_item/")
 
-    # Inactive item — description is empty so it should be omitted
+    # Inactive item - description is empty so it should be omitted
     assert "Catalog Item: Retired VPN Token" in docs[1].page_content
     assert docs[1].metadata["active"] is False
     # Empty optional fields should be skipped
@@ -602,7 +602,7 @@ def test_incident_without_journals() -> None:
 
 
 # ===================================================================
-# 9. Delta sync — load_since
+# 9. Delta sync - load_since
 # ===================================================================
 
 
@@ -637,7 +637,7 @@ def test_delta_sync_with_existing_query() -> None:
 
 
 # ===================================================================
-# 10. LangChain adapter — end-to-end
+# 10. LangChain adapter - end-to-end
 # ===================================================================
 
 
@@ -716,7 +716,7 @@ def test_langchain_adapter_kwargs_passthrough() -> None:
 
 
 # ===================================================================
-# 11. LlamaIndex adapter — end-to-end
+# 11. LlamaIndex adapter - end-to-end
 # ===================================================================
 
 

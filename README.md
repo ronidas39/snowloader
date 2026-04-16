@@ -14,9 +14,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Typed](https://img.shields.io/badge/typing-typed-blue.svg)](https://peps.python.org/pep-0561/)
 
-> Comprehensive ServiceNow data loader for AI/LLM pipelines — Incidents, CMDB, KB, Changes, Problems, Catalog & more.
+> Comprehensive ServiceNow data loader for AI/LLM pipelines - Incidents, CMDB, KB, Changes, Problems, Catalog & more.
 
-**Works with LangChain & LlamaIndex out of the box. Python 3.10–3.13.**
+**Works with LangChain & LlamaIndex out of the box. Python 3.10-3.13.**
 
 **[Documentation](https://snowloader.readthedocs.io)** | **[PyPI](https://pypi.org/project/snowloader/)** | **[GitHub](https://github.com/ronidas39/snowloader)**
 
@@ -29,14 +29,14 @@ Building RAG or agentic AI on top of ServiceNow data? You need a reliable way to
 snowloader gives you:
 
 - **6 loaders** covering the core ServiceNow tables (Incidents, Knowledge Base, CMDB, Changes, Problems, Service Catalog)
-- **CMDB relationship traversal** — concurrent graph walking with dependency mapping
-- **Delta sync** — only fetch records updated since your last sync
-- **4 auth modes** — Basic, OAuth Password, OAuth Client Credentials, Bearer Token
-- **Production-grade** — retry with backoff, rate limiting, thread safety, proxy support
+- **CMDB relationship traversal** - concurrent graph walking with dependency mapping
+- **Delta sync** - only fetch records updated since your last sync
+- **4 auth modes** - Basic, OAuth Password, OAuth Client Credentials, Bearer Token
+- **Production-grade** - retry with backoff, rate limiting, thread safety, proxy support
 - **Framework-agnostic core** with thin adapters for LangChain and LlamaIndex
-- **Memory-efficient streaming** — generator-based pagination, never holds the full table in memory
-- **Built-in HTML cleaning** — strips KB article HTML without extra dependencies
-- **Fully typed** — PEP 561 compliant, mypy --strict clean
+- **Memory-efficient streaming** - generator-based pagination, never holds the full table in memory
+- **Built-in HTML cleaning** - strips KB article HTML without extra dependencies
+- **Fully typed** - PEP 561 compliant, mypy --strict clean
 
 ## Installation
 
@@ -182,7 +182,7 @@ conn = SnowConnection(instance_url="...", token="eyJhbG...")
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `page_size` | `100` | Records per API call (1–10,000) |
+| `page_size` | `100` | Records per API call (1-10,000) |
 | `timeout` | `60` | HTTP timeout in seconds |
 | `max_retries` | `3` | Retry attempts for 429/502/503/504 |
 | `retry_backoff` | `1.0` | Base delay between retries (doubles each attempt) |
@@ -197,7 +197,7 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
 
 | Version | Feature | Status |
 |---------|---------|--------|
-| **v0.2** | Async support (`aiohttp` + `async for`) — 10-50x faster | Coming soon |
+| **v0.2** | Async support (`aiohttp` + `async for`) - 10-50x faster | Coming soon |
 | **v0.2** | Attachment loader (`sys_attachment` downloads) | Coming soon |
 | **v0.3** | Direct vector store streaming (Pinecone, Weaviate, Chroma) | Planned |
 | **v0.3** | Checkpoint and resume for large loads | Planned |
@@ -218,8 +218,8 @@ Contributions are welcome! Please:
 
 ## Author
 
-Created and maintained by **[Roni Das](https://github.com/ronidas39)** — [thetotaltechnology@gmail.com](mailto:thetotaltechnology@gmail.com)
+Created and maintained by **[Roni Das](https://github.com/ronidas39)** - [thetotaltechnology@gmail.com](mailto:thetotaltechnology@gmail.com)
 
 ## License
 
-MIT — see [LICENSE](LICENSE) for details.
+MIT - see [LICENSE](LICENSE) for details.

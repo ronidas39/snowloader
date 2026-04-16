@@ -16,8 +16,8 @@ snowloader
 
 **Comprehensive ServiceNow data loader for AI/LLM pipelines.**
 
-snowloader pulls data from ServiceNow — Incidents, Knowledge Base, CMDB,
-Changes, Problems, and Service Catalog — and converts it into document
+snowloader pulls data from ServiceNow - Incidents, Knowledge Base, CMDB,
+Changes, Problems, and Service Catalog - and converts it into document
 formats that LangChain, LlamaIndex, and other LLM frameworks consume
 directly. Built for production use with proper pagination, delta sync,
 retry logic, and memory-efficient streaming.
@@ -40,11 +40,11 @@ Key features:
 
 - **6 loaders** for core ServiceNow tables
 - **CMDB relationship traversal** with concurrent graph walking
-- **Delta sync** — only fetch records updated since your last sync
-- **4 authentication modes** — Basic, OAuth Password, OAuth Client Credentials, Bearer Token
+- **Delta sync** - only fetch records updated since your last sync
+- **4 authentication modes** - Basic, OAuth Password, OAuth Client Credentials, Bearer Token
 - **LangChain & LlamaIndex adapters** with zero business logic
-- **Production-grade** — retry with backoff, rate limiting, thread safety, proxy support
-- **Fully typed** — PEP 561 compliant with ``py.typed`` marker
+- **Production-grade** - retry with backoff, rate limiting, thread safety, proxy support
+- **Fully typed** - PEP 561 compliant with ``py.typed`` marker
 
 Created by **Roni Das** · `GitHub <https://github.com/ronidas39>`_ · `PyPI <https://pypi.org/project/snowloader/>`_ · `thetotaltechnology@gmail.com <mailto:thetotaltechnology@gmail.com>`_
 

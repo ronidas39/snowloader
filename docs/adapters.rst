@@ -3,7 +3,7 @@ Framework Adapters
 
 snowloader's core loaders produce framework-agnostic ``SnowDocument``
 objects. The adapter layer converts these into the document types that
-LangChain and LlamaIndex expect, with zero business logic — all the real
+LangChain and LlamaIndex expect, with zero business logic - all the real
 work happens in the core loaders.
 
 LangChain

@@ -89,8 +89,8 @@ Load incidents and iterate over them:
 
 Each document has two parts:
 
-- ``page_content`` — structured text formatted for LLM consumption
-- ``metadata`` — a dict with ``sys_id``, ``number``, ``table``, and other fields useful for filtering and linking
+- ``page_content`` - structured text formatted for LLM consumption
+- ``metadata`` - a dict with ``sys_id``, ``number``, ``table``, and other fields useful for filtering and linking
 
 Using with LangChain
 --------------------
@@ -141,7 +141,7 @@ Using with LlamaIndex
 Next Steps
 ----------
 
-- :doc:`authentication` — Learn about all 4 auth modes (Basic, OAuth, Bearer Token)
-- :doc:`loaders` — Explore all 6 loaders with examples
-- :doc:`advanced` — Delta sync, CMDB relationships, journal entries
-- :doc:`configuration` — Tune timeouts, retries, rate limiting, and more
+- :doc:`authentication` - Learn about all 4 auth modes (Basic, OAuth, Bearer Token)
+- :doc:`loaders` - Explore all 6 loaders with examples
+- :doc:`advanced` - Delta sync, CMDB relationships, journal entries
+- :doc:`configuration` - Tune timeouts, retries, rate limiting, and more

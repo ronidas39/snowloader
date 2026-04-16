@@ -5,9 +5,9 @@ snowloader provides six loaders, each targeting a specific ServiceNow table.
 All loaders share the same interface inherited from
 :class:`~snowloader.models.BaseSnowLoader`:
 
-- ``load()`` — returns a list of all matching documents
-- ``lazy_load()`` — yields documents one at a time (memory efficient)
-- ``load_since(datetime)`` — delta sync, fetches only updated records
+- ``load()`` - returns a list of all matching documents
+- ``lazy_load()`` - yields documents one at a time (memory efficient)
+- ``load_since(datetime)`` - delta sync, fetches only updated records
 
 IncidentLoader
 --------------
@@ -61,7 +61,7 @@ CMDBLoader
 ----------
 
 Loads Configuration Items from any CMDB class table. The most powerful
-loader — it can optionally traverse the relationship graph to show how
+loader - it can optionally traverse the relationship graph to show how
 CIs depend on each other.
 
 .. code-block:: python
@@ -88,11 +88,11 @@ CIs depend on each other.
 
 **Parameters:**
 
-- ``ci_class`` — CMDB class table (default: ``"cmdb_ci"``). Use
+- ``ci_class`` - CMDB class table (default: ``"cmdb_ci"``). Use
   ``"cmdb_ci_server"``, ``"cmdb_ci_service"``, etc. for specific classes.
-- ``include_relationships`` — when ``True``, fetches outbound and inbound
+- ``include_relationships`` - when ``True``, fetches outbound and inbound
   relationships from ``cmdb_rel_ci``. Adds 2 API calls per CI.
-- ``max_relationship_workers`` — number of concurrent threads for
+- ``max_relationship_workers`` - number of concurrent threads for
   relationship queries (default: ``2``).
 
 ChangeLoader
@@ -112,7 +112,7 @@ ProblemLoader
 -------------
 
 Loads problem records from the ``problem`` table. Documents highlight root
-cause, known error status, and fix notes — the fields most valuable for
+cause, known error status, and fix notes - the fields most valuable for
 LLM-powered incident correlation.
 
 .. code-block:: python

@@ -4,14 +4,14 @@ Roadmap
 snowloader is under active development. Here is what is planned for
 upcoming releases.
 
-v0.2 — Async & Attachments (Coming Soon)
+v0.2 - Async & Attachments (Coming Soon)
 -----------------------------------------
 
 **Async support (aiohttp + async for)**
 
 The current implementation is synchronous. For workloads like CMDB
 relationship traversal (2 API calls per CI) and journal fetching (1 call
-per record), async I/O will deliver 10–50x performance improvements.
+per record), async I/O will deliver 10-50x performance improvements.
 
 Planned API:
 
@@ -54,7 +54,7 @@ Planned API:
        print(f"{attachment.metadata['file_name']} ({attachment.metadata['size_bytes']} bytes)")
        # attachment.page_content contains the file content or extracted text
 
-v0.3 — Vector Store Streaming & Checkpointing
+v0.3 - Vector Store Streaming & Checkpointing
 ----------------------------------------------
 
 **Direct vector store streaming**
@@ -68,7 +68,7 @@ records.
 For large loads (100k+ records), save progress to disk so that a crash
 at record 50k does not require starting from the beginning.
 
-v1.0 — Custom Field Mapping
+v1.0 - Custom Field Mapping
 ----------------------------
 
 **User-defined table schemas**

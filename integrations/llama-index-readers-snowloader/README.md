@@ -2,7 +2,7 @@
 
 ServiceNow data readers for LlamaIndex, powered by [snowloader](https://github.com/ronidas39/snowloader).
 
-Covers six core ServiceNow tables — Incidents, Knowledge Base, CMDB, Changes, Problems, and Service Catalog — with production-grade features like retry logic, delta sync, CMDB relationship traversal, and HTML cleaning.
+Covers six core ServiceNow tables - Incidents, Knowledge Base, CMDB, Changes, Problems, and Service Catalog - with production-grade features like retry logic, delta sync, CMDB relationship traversal, and HTML cleaning.
 
 ## Installation
 
@@ -73,7 +73,7 @@ reader = ServiceNowIncidentReader(connection=conn)
 docs = reader.load_data()
 last_sync = datetime.now(timezone.utc)
 
-# Next run — only get changes
+# Next run - only get changes
 updated = reader.load_data_since(last_sync)
 ```
 
@@ -98,7 +98,7 @@ conn = SnowConnection(instance_url="...", token="eyJhbG...")
 
 ## Author
 
-Created and maintained by **[Roni Das](https://github.com/ronidas39)** — [thetotaltechnology@gmail.com](mailto:thetotaltechnology@gmail.com)
+Created and maintained by **[Roni Das](https://github.com/ronidas39)** - [thetotaltechnology@gmail.com](mailto:thetotaltechnology@gmail.com)
 
 ## Links
 

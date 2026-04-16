@@ -33,7 +33,7 @@ def main() -> None:
         query="active=true^priority<=2",
     )
 
-    # lazy_load() streams one document at a time — memory efficient
+    # lazy_load() streams one document at a time - memory efficient
     for doc in loader.lazy_load():
         logging.info(
             "%-12s %s",

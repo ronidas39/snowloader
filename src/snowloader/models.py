@@ -178,7 +178,7 @@ class BaseSnowLoader:
         page_content = "\n".join(content_parts)
 
         # If journals are requested, fetch and append them.
-        # Journal fetch is resilient — failures are logged, not raised,
+        # Journal fetch is resilient - failures are logged, not raised,
         # so a single inaccessible journal table does not crash the load.
         sys_id = str(record.get("sys_id", ""))
         if self._include_journals and sys_id:

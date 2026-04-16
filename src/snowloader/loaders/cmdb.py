@@ -204,7 +204,7 @@ class CMDBLoader(BaseSnowLoader):
             future_out = executor.submit(self._fetch_relationship_direction, sys_id, "outbound")
             future_in = executor.submit(self._fetch_relationship_direction, sys_id, "inbound")
 
-            # Extract results individually — a failure in one direction
+            # Extract results individually - a failure in one direction
             # should not discard the other direction's data.
             try:
                 outbound = future_out.result()

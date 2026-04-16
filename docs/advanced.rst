@@ -32,7 +32,7 @@ CMDB Relationship Traversal
 ----------------------------
 
 The CMDB loader can map out how Configuration Items relate to each
-other — dependencies, containment, hosting, and more.
+other - dependencies, containment, hosting, and more.
 
 .. code-block:: python
 
@@ -65,7 +65,7 @@ times out), the other direction's data is still preserved.
 Journal Entries (Work Notes & Comments)
 ---------------------------------------
 
-Incidents, changes, and problems can include journal entries — the
+Incidents, changes, and problems can include journal entries - the
 timestamped notes that agents add during investigation. These are stored
 in a separate table (``sys_journal_field``) and fetched per record when
 ``include_journals=True``.
@@ -84,7 +84,7 @@ in a separate table (``sys_journal_field``) and fetched per record when
        if "[work_notes]" in doc.page_content:
            print(f"{doc.metadata['number']} has work notes")
 
-Journal fetching is resilient — if the journal table is inaccessible
+Journal fetching is resilient - if the journal table is inaccessible
 (permissions, network error), a warning is logged and the document is
 returned without journal data rather than failing the entire load.
 
@@ -116,7 +116,7 @@ pace your requests:
        request_delay=0.1,  # 100ms between requests (~600 req/min)
    )
 
-The connection also handles HTTP 429 responses automatically — it reads
+The connection also handles HTTP 429 responses automatically - it reads
 the ``Retry-After`` header and waits before retrying.
 
 Filtering with Encoded Queries

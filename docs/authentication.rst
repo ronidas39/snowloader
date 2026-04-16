@@ -8,7 +8,7 @@ the credentials you provide.
 OAuth 2.0 Client Credentials (Recommended)
 -------------------------------------------
 
-Best for server-to-server integrations. No user password needed — the OAuth
+Best for server-to-server integrations. No user password needed - the OAuth
 application is tied to a ServiceNow user whose permissions govern API access.
 
 .. code-block:: python
@@ -52,7 +52,7 @@ Bearer Token
 ------------
 
 Pass a pre-obtained token directly. Useful when authentication is handled
-outside the library — for example, through SSO, a corporate token service,
+outside the library - for example, through SSO, a corporate token service,
 or a manually acquired OAuth token.
 
 .. code-block:: python

@@ -7,12 +7,12 @@ All notable changes to snowloader are documented here. This project follows [Sem
 ### Added
 
 **Loaders:**
-- `IncidentLoader` — IT incidents with structured text and journal support
-- `KnowledgeBaseLoader` — KB articles with built-in HTML cleaning
-- `CMDBLoader` — Configuration Items with concurrent relationship traversal
-- `ChangeLoader` — Change requests with implementation window details
-- `ProblemLoader` — Problems with root cause and known error handling
-- `CatalogLoader` — Service catalog items
+- `IncidentLoader` - IT incidents with structured text and journal support
+- `KnowledgeBaseLoader` - KB articles with built-in HTML cleaning
+- `CMDBLoader` - Configuration Items with concurrent relationship traversal
+- `ChangeLoader` - Change requests with implementation window details
+- `ProblemLoader` - Problems with root cause and known error handling
+- `CatalogLoader` - Service catalog items
 
 **Framework Adapters:**
 - LangChain adapter (6 classes implementing `BaseLoader`)

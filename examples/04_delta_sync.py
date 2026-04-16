@@ -1,4 +1,4 @@
-"""Delta sync example — only fetch updated records.
+"""Delta sync example - only fetch updated records.
 
 Demonstrates how to use load_since() to incrementally sync ServiceNow
 data. On the first run, all records are loaded. On subsequent runs,

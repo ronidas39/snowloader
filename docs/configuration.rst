@@ -39,7 +39,7 @@ SnowConnection Parameters
    * - ``page_size``
      - ``int``
      - ``100``
-     - Records per API call (1–10,000). Larger values reduce the number of HTTP calls but increase memory per page.
+     - Records per API call (1-10,000). Larger values reduce the number of HTTP calls but increase memory per page.
    * - ``timeout``
      - ``int``
      - ``60``

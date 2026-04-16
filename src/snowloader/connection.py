@@ -68,16 +68,16 @@ class SnowConnection:
 
     Supports four authentication modes (checked in priority order):
 
-        1. **Bearer token** — pass a pre-obtained token directly via
+        1. **Bearer token** - pass a pre-obtained token directly via
            ``token``. No user credentials needed. Useful when auth is
            handled outside the library (SSO, external token service).
-        2. **OAuth 2.0 Client Credentials** — pass ``client_id`` and
+        2. **OAuth 2.0 Client Credentials** - pass ``client_id`` and
            ``client_secret`` without ``username``/``password``. Best for
            server-to-server integrations with no human user involved.
-        3. **OAuth 2.0 Password Grant** — pass all four: ``client_id``,
+        3. **OAuth 2.0 Password Grant** - pass all four: ``client_id``,
            ``client_secret``, ``username``, ``password``. Token is acquired
            lazily on first request and refreshed on 401.
-        4. **Basic Auth** — pass ``username`` and ``password`` only.
+        4. **Basic Auth** - pass ``username`` and ``password`` only.
            Simplest; fine for development, not recommended for production.
 
     Can be used as a context manager for clean session shutdown::
@@ -97,7 +97,7 @@ class SnowConnection:
         client_secret: OAuth client secret.
         token: Pre-obtained Bearer token. When provided, all other
             credentials are ignored.
-        page_size: Records per API call during pagination (1–10 000).
+        page_size: Records per API call during pagination (1-10 000).
             Defaults to 100.
         timeout: HTTP request timeout in seconds. Defaults to 60.
         max_retries: Retry attempts for transient failures (429, 502,
@@ -553,7 +553,7 @@ class SnowConnection:
                     f"Connection failed to {self.instance_url}: {exc}",
                     detail="Check your network connection and instance URL. "
                     "The instance may be hibernating (dev instances sleep "
-                    "after inactivity — wake it by visiting the URL in a "
+                    "after inactivity - wake it by visiting the URL in a "
                     "browser).",
                 )
                 continue
@@ -659,7 +659,7 @@ class SnowConnection:
                     msg = error_obj.get("message", "")
                     detail = error_obj.get("detail", "")
                     if msg and detail:
-                        return f"{msg} — {detail}"
+                        return f"{msg} - {detail}"
                     return str(msg or detail or body)
                 return str(error_obj)
         except (ValueError, TypeError):
