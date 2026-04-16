@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llama-index-readers-snowloader"
-version = "0.1.0"
+version = "0.1.1"
 description = "ServiceNow data reader for LlamaIndex - load Incidents, CMDB, KB, Changes, Problems, and Catalog into LlamaIndex Documents."
 readme = "README.md"
 license = {text = "MIT"}
