@@ -23,6 +23,7 @@ import re
 import threading
 import time
 from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from types import TracebackType
 from typing import Any, cast
@@ -332,6 +333,141 @@ class SnowConnection:
 
         logger.info("Completed fetch from '%s': %d records total.", table, total_yielded)
 
+    def get_count(
+        self,
+        table: str,
+        query: str | None = None,
+        since: datetime | None = None,
+    ) -> int:
+        """Return the total record count for a table query.
+
+        Hits ``/api/now/stats/<table>`` which is much cheaper than a paginated
+        read and is required by :meth:`concurrent_get_records` so it can plan
+        page offsets.
+
+        Args:
+            table: ServiceNow table name.
+            query: Optional encoded query string.
+            since: Optional delta sync cutoff.
+
+        Returns:
+            Integer record count, or 0 if the response shape is unexpected.
+
+        Raises:
+            SnowConnectionError: On any non-2xx response from the API.
+        """
+        if not table or not table.strip():
+            raise SnowConnectionError("table name must not be empty.")
+
+        params: dict[str, str] = {"sysparm_count": "true"}
+        query_parts: list[str] = []
+        if query:
+            query_parts.append(query)
+        if since:
+            timestamp = since.strftime("%Y-%m-%d %H:%M:%S")
+            query_parts.append(f"sys_updated_on>{timestamp}")
+        if query_parts:
+            params["sysparm_query"] = "^".join(query_parts)
+
+        url = f"{self.instance_url}/api/now/stats/{table}"
+        data = self._request("GET", url, params=params)
+        result = data.get("result", {})
+        stats = result.get("stats", {}) if isinstance(result, dict) else {}
+        try:
+            return int(stats.get("count", 0))
+        except (ValueError, TypeError):
+            return 0
+
+    def concurrent_get_records(
+        self,
+        table: str,
+        query: str | None = None,
+        fields: list[str] | None = None,
+        since: datetime | None = None,
+        max_workers: int = 16,
+    ) -> Generator[dict[str, object], None, None]:
+        """Fetch records using a thread pool so pages download in parallel.
+
+        Sequential :meth:`get_records` walks pages one at a time. For large
+        tables (hundreds of thousands of records) that gets slow. This method
+        pre-fetches the total count, splits into pages, and dispatches the
+        page fetches to a thread pool. Each worker thread holds its own
+        :class:`requests.Session` so connection pools and TLS state stay
+        isolated, which avoids the connection-reuse failure modes some
+        ServiceNow front ends exhibit when many concurrent requests share
+        a single client session.
+
+        Records are yielded in the order pages complete, NOT in
+        ``ORDERBYsys_created_on`` order. If you need ordered output, sort
+        the consumed list yourself by the relevant timestamp.
+
+        Args:
+            table: ServiceNow table name.
+            query: Optional encoded query.
+            fields: Optional list of field names to request.
+            since: Optional delta sync cutoff.
+            max_workers: Number of worker threads (default 16). Each worker
+                holds its own ``requests.Session``.
+
+        Yields:
+            One record dict at a time as pages arrive.
+
+        Raises:
+            SnowConnectionError: On count failure or any unrecoverable page error.
+        """
+        if not table or not table.strip():
+            raise SnowConnectionError("table name must not be empty.")
+        if max_workers < 1:
+            raise SnowConnectionError(f"max_workers must be >= 1, got {max_workers}.")
+
+        # Build the same query the sequential path would
+        params = self._build_query_params(query=query, fields=fields, since=since)
+        full_query = params.get("sysparm_query")
+
+        total = self.get_count(table, query=full_query)
+        if total == 0:
+            logger.info("No records match the query for '%s'", table)
+            return
+
+        page_count = (total + self.page_size - 1) // self.page_size
+        logger.info(
+            "Concurrent fetch from '%s': %d records, %d pages, %d workers",
+            table,
+            total,
+            page_count,
+            max_workers,
+        )
+
+        thread_local = threading.local()
+
+        def get_thread_session() -> requests.Session:
+            sess = getattr(thread_local, "session", None)
+            if sess is None:
+                sess = requests.Session()
+                sess.verify = self._session.verify
+                sess.proxies = dict(self._session.proxies)
+                if self.auth_type == "basic":
+                    sess.auth = self._session.auth
+                thread_local.session = sess
+            return sess
+
+        def fetch_page(offset: int) -> list[dict[str, object]]:
+            sess = get_thread_session()
+            page_params = dict(params)
+            page_params["sysparm_offset"] = str(offset)
+            url = f"{self.instance_url}/api/now/table/{table}"
+            data = self._request_with_session(sess, "GET", url, params=page_params)
+            raw = data.get("result") if isinstance(data, dict) else None
+            if raw is None or not isinstance(raw, list):
+                return []
+            return cast(list[dict[str, object]], raw)
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(fetch_page, i * self.page_size) for i in range(page_count)]
+            for fut in as_completed(futures):
+                records = fut.result()
+                yield from records
+
     def get_attachment(self, sys_id: str) -> bytes:
         """Download the binary content of one ``sys_attachment`` record.
 
@@ -566,18 +702,35 @@ class SnowConnection:
         url: str,
         params: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Send an HTTP request with retry logic and error handling.
+        """Send an HTTP request through the shared session with retry/error handling.
 
         Thread-safe: uses a lock around the HTTP call so concurrent
         threads (e.g. CMDB relationship fetching) do not corrupt the
         shared requests.Session state.
 
-        Retries transient failures (429, 502, 503, 504) with exponential
+        Retries transient failures (429, 500, 502, 503, 504) with exponential
         backoff. Respects Retry-After headers from 429 responses. Raises
         SnowConnectionError on permanent failures with structured details.
+        """
+        return self._request_with_session(self._session, method, url, params)
+
+    def _request_with_session(
+        self,
+        session: requests.Session,
+        method: str,
+        url: str,
+        params: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Send an HTTP request through a caller-provided session.
+
+        Used by :meth:`concurrent_get_records`, where each worker thread
+        owns its own ``requests.Session`` to keep connection pools and TLS
+        state isolated. Same retry / error handling as :meth:`_request`,
+        minus the shared session lock (the caller's session is per-thread).
 
         Args:
-            method: HTTP method, typically "GET".
+            session: The ``requests.Session`` to use for this call.
+            method: HTTP method.
             url: Full URL including the instance base and API path.
             params: Optional query parameters.
 
@@ -589,6 +742,8 @@ class SnowConnection:
         """
         self._ensure_oauth_token()
         self._throttle()
+
+        use_shared_lock = session is self._session
 
         headers: dict[str, str] = {"Accept": "application/json"}
         if self.auth_type in ("oauth", "client_credentials", "bearer") and self._access_token:
@@ -612,8 +767,17 @@ class SnowConnection:
             logger.debug("%s %s params=%s (attempt %d)", method, url, params, attempt)
 
             try:
-                with self._request_lock:
-                    resp = self._session.request(
+                if use_shared_lock:
+                    with self._request_lock:
+                        resp = session.request(
+                            method=method,
+                            url=url,
+                            params=params,
+                            headers=headers,
+                            timeout=self.timeout,
+                        )
+                else:
+                    resp = session.request(
                         method=method,
                         url=url,
                         params=params,

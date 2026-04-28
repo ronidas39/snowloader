@@ -2,6 +2,18 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.5] - 2026-04-28
+
+### Added
+
+- `SnowConnection.get_count(table, query, since)` - sync sibling of `aget_count`. Hits `/api/now/stats/<table>` and returns the integer record count. Used internally by the new threaded paginator and useful for users who need the total before deciding how to fetch.
+- `SnowConnection.concurrent_get_records(table, query, fields, since, max_workers=16)` - threaded paginator that fetches pages in parallel using a `ThreadPoolExecutor`. Each worker thread holds its own `requests.Session` so connection pools and TLS state stay isolated. This avoids the connection-reuse failures some ServiceNow front ends exhibit when many concurrent requests share a single client session, and gives sync users the same throughput characteristics as the async path without the aiohttp dependency.
+- `BaseSnowLoader.concurrent_load(max_workers)` and `BaseSnowLoader.concurrent_lazy_load(max_workers, since)` - high-level loader methods that yield `SnowDocument` objects through the threaded paginator.
+
+### Changed
+
+- `SnowConnection._request` now delegates to a new internal `_request_with_session(session, method, url, params)` so caller-provided sessions can use the same retry, OAuth refresh, and rate-limiting logic. The shared-session lock is still applied when called via the default `_request` path.
+
 ## [0.2.4] - 2026-04-28
 
 ### Changed

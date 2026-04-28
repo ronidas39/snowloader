@@ -155,6 +155,63 @@ class BaseSnowLoader:
         """
         return list(self.lazy_load(since=since))
 
+    def concurrent_lazy_load(
+        self,
+        since: datetime | None = None,
+        max_workers: int = 16,
+    ) -> Generator[SnowDocument, None, None]:
+        """Fetch records in parallel and yield them as SnowDocuments.
+
+        This is the threaded counterpart to lazy_load(). It dispatches page
+        fetches across a ThreadPoolExecutor inside SnowConnection, so wall
+        clock time on large tables drops roughly proportional to max_workers
+        (subject to ServiceNow rate limits and instance capacity). Memory
+        stays flat because results are still streamed as they arrive.
+
+        Records are yielded in the order pages complete, which is not the
+        same as sys_created_on order. If you need a stable ordering, sort
+        downstream or use lazy_load() instead.
+
+        Args:
+            since: Optional cutoff datetime for delta sync. When set,
+                only records updated after this point are fetched.
+            max_workers: Number of worker threads to use for page fetches.
+                Defaults to 16. Higher values speed up large tables but
+                may trip ServiceNow rate limits on smaller instances.
+
+        Yields:
+            SnowDocument instances, one per ServiceNow record, in the
+            order their pages complete (not sys_created_on order).
+        """
+        records = self._connection.concurrent_get_records(
+            table=self.table,
+            query=self._query,
+            fields=self._fields,
+            since=since,
+            max_workers=max_workers,
+        )
+
+        for record in records:
+            yield self._record_to_document(record)
+
+    def concurrent_load(self, max_workers: int = 16) -> list[SnowDocument]:
+        """Fetch all matching records in parallel and return them as a list.
+
+        Threaded counterpart to load(). Drains concurrent_lazy_load() into
+        a list, so the same ordering caveat applies: documents come back
+        in page-completion order, not sys_created_on order. For very large
+        tables, prefer concurrent_lazy_load() to keep memory bounded.
+
+        Args:
+            max_workers: Number of worker threads to use for page fetches.
+                Defaults to 16.
+
+        Returns:
+            List of SnowDocument instances, one per record, in the order
+            their pages completed.
+        """
+        return list(self.concurrent_lazy_load(max_workers=max_workers))
+
     def _record_to_document(self, record: dict[str, Any]) -> SnowDocument:
         """Convert a single API record dict into a SnowDocument.
 
