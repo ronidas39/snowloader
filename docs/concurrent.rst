@@ -81,19 +81,23 @@ Every :class:`BaseSnowLoader` subclass picks up two new methods:
            index.upsert(doc)
 
 
-Real-world numbers
+Order of magnitude
 ------------------
 
-A production extraction of 457,247 closed incidents from a customer
-ServiceNow instance, with 23 fields per record and ``display_value=all``:
+Relative throughput on a typical ServiceNow instance, pulling rich
+records with ``display_value=all`` and a non-trivial field list:
 
-============================  ===============  ===========
-Path                          Wall time        Rate
-============================  ===============  ===========
-Sequential ``get_records``    ~9 hours         ~14 rec/s
-Async ``aget_records``         ~95 minutes      ~80 rec/s
-Threaded ``concurrent_*``      **20 minutes**   **376 rec/s**
-============================  ===============  ===========
+============================  ==============================
+Path                          Throughput
+============================  ==============================
+Sequential ``get_records``    Baseline
+Async ``aget_records``         Several times faster
+Threaded ``concurrent_*``      Many times faster
+============================  ==============================
+
+The exact numbers depend heavily on instance size, network distance, page
+size, and server-side query cost. Benchmark against your own instance
+before tuning for a specific throughput target.
 
 
 When to pick which path
@@ -140,3 +144,149 @@ How it relates to ``concurrent_get_records``
 threaded paginator: it hits ``/api/now/stats/<table>?sysparm_count=true``
 and returns the integer count. Useful on its own when you need to know
 the size of a query before deciding how to fetch.
+
+
+Recipe: two-pull corpus extraction with resume
+-----------------------------------------------
+
+A common pattern for AI / RAG pipelines built on ServiceNow is to maintain
+two parallel corpora:
+
+1. **Recommendation corpus**: closed and resolved tickets that became the
+   ground truth for "how was a similar incident solved before?"
+2. **Duplicate-prevention corpus**: active in-progress tickets, refreshed
+   often, used at intake time to detect whether a new ticket is a duplicate
+   of one already in flight.
+
+Both pulls share the same shape: raw API output (so reference fields keep
+their full ``display_value`` / ``value`` / ``link`` structure for downstream
+consumers), JSONL output, end-of-run validation against
+``/api/now/stats``, and resume support so a crash does not force a full
+re-fetch.
+
+The threaded paginator yields pages in completion order, so a single
+"last offset" cursor is not enough for resume. Track the **set of
+completed page offsets** instead. On rerun, only the offsets not yet in
+the set get dispatched.
+
+.. code-block:: python
+
+   import json
+   import threading
+   from concurrent.futures import ThreadPoolExecutor, as_completed
+   from pathlib import Path
+   from snowloader import SnowConnection
+
+   PAGE_SIZE = 1000
+   MAX_WORKERS = 16
+
+   def run_pull(conn: SnowConnection, query: str, fields: list[str],
+                output: Path, state_file: Path) -> tuple[int, int]:
+       """Run one pull with offset-level checkpointing.
+
+       Returns (records_written, api_total).
+       """
+       state = json.loads(state_file.read_text()) if state_file.exists() else {"completed": []}
+       completed = set(state["completed"])
+
+       total = conn.get_count("incident", query=query)
+       page_count = (total + PAGE_SIZE - 1) // PAGE_SIZE
+       pending = [i * PAGE_SIZE for i in range(page_count) if i * PAGE_SIZE not in completed]
+
+       mode = "a" if completed and output.exists() else "w"
+       written = sum(1 for _ in output.open()) if mode == "a" else 0
+
+       fh = output.open(mode, encoding="utf-8")
+       write_lock = threading.Lock()
+
+       def fetch_one(offset: int) -> int:
+           # Use the SDK's internal helper to inherit retry / OAuth / rate limiting
+           import requests
+           sess = requests.Session()
+           sess.auth = conn._session.auth
+           url = f"{conn.instance_url}/api/now/table/incident"
+           params = {
+               "sysparm_limit": str(PAGE_SIZE),
+               "sysparm_offset": str(offset),
+               "sysparm_query": query,
+               "sysparm_fields": ",".join(fields),
+               "sysparm_display_value": "all",
+           }
+           data = conn._request_with_session(sess, "GET", url, params=params)
+           records = data.get("result") or []
+           lines = []
+           for rec in records:
+               sid = rec["sys_id"]
+               num = rec["number"]
+               sid_v = sid.get("value", "") if isinstance(sid, dict) else (sid or "")
+               num_v = num.get("value", "") if isinstance(num, dict) else (num or "")
+               if not sid_v or not num_v:
+                   continue
+               lines.append(json.dumps(rec, ensure_ascii=False))
+           if lines:
+               with write_lock:
+                   fh.write("\n".join(lines) + "\n")
+                   fh.flush()
+           return len(lines)
+
+       try:
+           with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+               futs = {pool.submit(fetch_one, off): off for off in pending}
+               for fut in as_completed(futs):
+                   off = futs[fut]
+                   written += fut.result()
+                   completed.add(off)
+                   # Checkpoint state every 30 pages
+                   if len(completed) % 30 == 0:
+                       state_file.write_text(json.dumps({"completed": sorted(completed)}))
+       finally:
+           fh.close()
+           state_file.write_text(json.dumps({"completed": sorted(completed)}))
+
+       return written, total
+
+
+   with SnowConnection(
+       instance_url="https://yourcompany.service-now.com",
+       username="api_user",
+       password="api_pass",
+       page_size=PAGE_SIZE,
+       display_value="all",
+       max_retries=5,
+   ) as conn:
+       # Pull A: closed corpus (recommendation)
+       written_a, total_a = run_pull(
+           conn,
+           query=("stateIN6,7^close_notesISNOTEMPTY"
+                  "^sys_updated_on>=javascript:gs.daysAgoStart(730)"
+                  "^ORDERBYsys_created_on"),
+           fields=["sys_id", "number", "short_description", "close_notes",
+                   "state", "priority", "urgency", "impact",
+                   "assignment_group", "caller_id", "assigned_to",
+                   "opened_at", "resolved_at"],
+           output=Path("incidents_closed.jsonl"),
+           state_file=Path("incidents_closed.state.json"),
+       )
+       print(f"closed: wrote {written_a}, api total {total_a}")
+
+       # Pull B: active corpus (duplicate prevention)
+       written_b, total_b = run_pull(
+           conn,
+           query=("stateIN1,2,3,4,5"
+                  "^opened_at>=javascript:gs.daysAgoStart(60)"
+                  "^ORDERBYsys_created_on"),
+           fields=["sys_id", "number", "short_description",
+                   "state", "priority", "category",
+                   "caller_id", "opened_at"],
+           output=Path("incidents_active.jsonl"),
+           state_file=Path("incidents_active.state.json"),
+       )
+       print(f"active: wrote {written_b}, api total {total_b}")
+
+Why per-thread sessions matter: some ServiceNow front ends silently return
+empty or null bodies under sustained concurrent load when many requests
+share a single client session. Per-thread :class:`requests.Session`
+instances avoid that failure mode, which is exactly what
+:meth:`SnowConnection.concurrent_get_records` does internally and what
+the recipe above replicates when you need explicit (offset, records)
+visibility for resume.

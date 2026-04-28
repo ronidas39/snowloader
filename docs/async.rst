@@ -11,10 +11,9 @@ Why async
 
 The default :class:`~snowloader.SnowConnection` walks pages one after
 another. That works fine for small tables but becomes the bottleneck on
-production instances with hundreds of thousands of records. Real-world
-benchmarks show a 16-thread parallel fetch finishing a 457,000-incident
-extraction in under 20 minutes, where the sequential path would take
-roughly nine hours.
+production instances with hundreds of thousands of records. Concurrent
+fetching turns a multi-hour sequential extraction into a matter of
+minutes on typical instances.
 
 The async API provides the same speedup without you having to manage
 threads, sessions, or page offsets manually.

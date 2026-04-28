@@ -2,6 +2,14 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.7] - 2026-04-28
+
+### Documentation
+
+- README gains a "Recipe: large-scale extraction with resume support" subsection showing the two-pull corpus pattern (closed corpus + active corpus) with raw `display_value=all` JSONL output, sys_id/number skip filter, and end-of-run validation against `/api/now/stats`.
+- `docs/concurrent.rst` extended with the full two-pull recipe including offset-level state file checkpointing, per-thread sessions for connection isolation, and an explanation of why a single "last offset" cursor is not enough for the threaded paginator.
+- All examples use generic placeholders (`yourcompany.service-now.com`, `api_user`, `api_pass`) so the documentation does not leak real instance details.
+
 ## [0.2.6] - 2026-04-28
 
 ### Documentation

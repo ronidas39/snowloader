@@ -21,8 +21,8 @@ patches driven by real-world extractions. See :doc:`async`,
   like ``priority``, ``urgency``, and ``impact``
 - ``SnowConnection.get_count`` and ``concurrent_get_records`` plus
   ``BaseSnowLoader.concurrent_load`` and ``concurrent_lazy_load`` for
-  threaded sync extractions (per-thread sessions, 376 rec/s on a real
-  457k-record extraction)
+  threaded sync extractions with per-thread ``requests.Session`` instances
+  (matches the throughput of the async path, no ``aiohttp`` dependency)
 
 **Robustness improvements (across 0.2.1 through 0.2.5):**
 

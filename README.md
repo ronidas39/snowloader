@@ -117,11 +117,71 @@ with SnowConnection(
     docs = loader.concurrent_load(max_workers=16)
 ```
 
-Real-world result: 457,247 incidents from a production instance pulled in **20 minutes** at 376 records/second.
+Compared to sequential pagination, the threaded path turns multi-hour extractions on large tables into a matter of minutes on typical instances.
 
 When to pick which path:
 - `concurrent_get_records` / `concurrent_load`: sync code, no asyncio integration needed, want maximum throughput out of the box.
 - `aget_records` / `aload`: existing asyncio app, want native `async for` integration with the rest of your event loop.
+
+### Recipe: large-scale extraction with resume support
+
+A common pattern for AI knowledge bases is two parallel corpus pulls: closed/resolved tickets for past-resolution recommendations and active tickets for duplicate detection. Both need raw API output (with `sysparm_display_value=all` so reference fields keep `display_value` plus `value` plus `link`) streamed to JSONL, with resume on crash and end-of-run validation. Here is a self-contained pattern:
+
+```python
+import json
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from snowloader import SnowConnection
+
+QUERY = (
+    "stateIN6,7"
+    "^close_notesISNOTEMPTY"
+    "^sys_updated_on>=javascript:gs.daysAgoStart(730)"
+    "^ORDERBYsys_created_on"
+)
+FIELDS = ["sys_id", "number", "short_description", "close_notes",
+          "state", "priority", "urgency", "impact", "category",
+          "assignment_group", "caller_id", "assigned_to",
+          "opened_at", "resolved_at", "sys_updated_on"]
+
+output_path = Path("incidents_closed.jsonl")
+state_path = Path("incidents_closed.state.json")
+
+# Resume from prior run if present
+state = json.loads(state_path.read_text()) if state_path.exists() else {"completed": []}
+completed_offsets = set(state["completed"])
+
+with SnowConnection(
+    instance_url="https://yourcompany.service-now.com",
+    username="api_user",
+    password="api_pass",
+    page_size=1000,
+    display_value="all",
+    max_retries=5,
+) as conn:
+    total = conn.get_count("incident", query=QUERY)
+    page_count = (total + conn.page_size - 1) // conn.page_size
+    pending = [i * conn.page_size for i in range(page_count)
+               if i * conn.page_size not in completed_offsets]
+
+    mode = "a" if completed_offsets else "w"
+    with output_path.open(mode, encoding="utf-8") as fh:
+        for record in conn.concurrent_get_records(
+            table="incident", query=QUERY, fields=FIELDS, max_workers=16
+        ):
+            sid = record["sys_id"].get("value") if isinstance(record["sys_id"], dict) else record["sys_id"]
+            num = record["number"].get("value") if isinstance(record["number"], dict) else record["number"]
+            if not sid or not num:
+                continue
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    # Validate the file matches the API count
+    line_count = sum(1 for _ in output_path.open("r"))
+    api_total = conn.get_count("incident", query=QUERY)
+    print(f"file: {line_count}, api: {api_total}, drift: {line_count - api_total}")
+```
+
+For the full pattern with offset-level checkpointing (so a crash mid-run loses at most a few seconds of work), see the `concurrent` documentation page.
 
 ## Async API
 
