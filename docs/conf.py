@@ -10,7 +10,7 @@ sys.path.insert(0, os.path.abspath("../src"))
 project = "snowloader"
 copyright = "2026, Roni Das"
 author = "Roni Das"
-release = "0.2.0"
+release = "0.2.1"
 
 # -- General configuration ---------------------------------------------------
 

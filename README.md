@@ -252,8 +252,8 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
 
 | Version | Feature | Status |
 |---------|---------|--------|
-| **v0.2** | Async support (`aiohttp` + `async for`) - 10-50x faster | Coming soon |
-| **v0.2** | Attachment loader (`sys_attachment` downloads) | Coming soon |
+| **v0.2** | Async support (`aiohttp` + `async for`) - 10-50x faster | Shipped |
+| **v0.2** | Attachment loader (`sys_attachment` downloads) | Shipped |
 | **v0.3** | Direct vector store streaming (Pinecone, Weaviate, Chroma) | Planned |
 | **v0.3** | Checkpoint and resume for large loads | Planned |
 | **v1.0** | Custom field mapping for customized instances | Planned |
