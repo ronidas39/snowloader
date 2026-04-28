@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # Retry defaults
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_RETRY_BACKOFF = 1.0  # seconds, doubles each attempt
-_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _MAX_PAGE_SIZE = 10000
 _MIN_PAGE_SIZE = 1
 

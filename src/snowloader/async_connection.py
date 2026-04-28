@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_RETRY_BACKOFF = 1.0
-_RETRYABLE_STATUS_CODES = {429, 502, 503, 504}
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _MAX_PAGE_SIZE = 10000
 _MIN_PAGE_SIZE = 1
 _DEFAULT_CONCURRENCY = 16
@@ -210,9 +210,18 @@ class AsyncSnowConnection:
 
     async def _ensure_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
+            # force_close=True disables HTTP keep-alive: each request gets a
+            # fresh TCP connection. Some ServiceNow front ends (and shared
+            # WAF/proxy layers in front of them) silently return empty / null
+            # response bodies on reused connections under concurrent load,
+            # which corrupts paginated reads. Trading a small amount of
+            # connection-setup overhead for correctness is the right call
+            # for a data-extraction SDK where missing pages are unacceptable.
             connector = aiohttp.TCPConnector(
                 limit=self.concurrency * 2,
+                limit_per_host=self.concurrency,
                 ssl=self._verify_ssl,
+                force_close=True,
             )
             timeout_cfg = aiohttp.ClientTimeout(total=self.timeout)
             auth = None
@@ -385,18 +394,32 @@ class AsyncSnowConnection:
                         ) from exc
 
                     if not isinstance(parsed, dict):
-                        # Some ServiceNow paths can return ``null`` or a list
-                        # under transient load. Treat anything that is not a
-                        # JSON object as an empty result so downstream code
-                        # does not crash on ``data.get(...)``.
-                        logger.warning(
-                            "API returned non-object JSON for %s %s (type=%s); "
-                            "treating as empty result.",
-                            method,
-                            url,
-                            type(parsed).__name__,
+                        # ServiceNow occasionally returns ``null`` or a list
+                        # body on a 200 response when something upstream
+                        # drops the payload (typically a connection-reuse
+                        # issue under concurrent load). Silently treating
+                        # this as an empty page would lose data, so retry
+                        # the request as if it were a transient 5xx.
+                        if attempt < self.max_retries:
+                            logger.warning(
+                                "API returned non-object JSON for %s %s (type=%s); "
+                                "retrying (attempt %d/%d)",
+                                method,
+                                url,
+                                type(parsed).__name__,
+                                attempt + 1,
+                                self.max_retries,
+                            )
+                            await asyncio.sleep(backoff)
+                            attempt += 1
+                            backoff *= 2
+                            continue
+                        raise SnowConnectionError(
+                            f"API returned non-object JSON for {method} {url} "
+                            f"after {self.max_retries} retries",
+                            status_code=resp.status,
+                            detail=f"Got {type(parsed).__name__} instead of dict",
                         )
-                        return {"result": []}
                     return cast(dict[str, Any], parsed)
             except aiohttp.ClientError as exc:
                 if attempt < self.max_retries:

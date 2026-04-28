@@ -2,6 +2,18 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.3] - 2026-04-28
+
+### Changed
+
+- `AsyncSnowConnection` now uses `force_close=True` and `limit_per_host=concurrency` on its `aiohttp.TCPConnector`. Each request gets a fresh TCP connection, which avoids the connection-reuse failures some ServiceNow instances exhibit under sustained concurrent load.
+- Non-object JSON bodies (e.g. `null` or a list returned with HTTP 200) are now treated as transient failures: the SDK retries up to `max_retries` and raises `SnowConnectionError` if the issue persists. Previously the v0.2.2 fallback silently treated them as empty pages, which would lose data.
+- HTTP 500 added to the default retryable status code set on both `SnowConnection` and `AsyncSnowConnection`. ServiceNow 500s are typically transient overload, not deterministic bugs.
+
+### Fixed
+
+- `AsyncSnowConnection.aget_records` no longer crashes with `AttributeError` when a page returns a non-object JSON body. The retry-then-raise behavior surfaces the failure clearly instead of silently dropping data.
+
 ## [0.2.2] - 2026-04-28
 
 ### Fixed

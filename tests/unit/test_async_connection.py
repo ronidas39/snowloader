@@ -255,11 +255,12 @@ async def test_aget_attachment_returns_bytes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_request_treats_null_body_as_empty_result() -> None:
-    """Regression: ServiceNow can return JSON null under transient load.
+async def test_request_retries_null_body_then_raises() -> None:
+    """ServiceNow occasionally returns 200 with a ``null`` body under load.
 
-    Previously this crashed aget_records on ``data.get('result')``. Now we
-    log a warning and treat it as an empty result.
+    The SDK must NOT silently treat this as an empty page (that would lose
+    data). Instead it retries up to ``max_retries`` and raises if the issue
+    persists, so the caller knows something is wrong.
     """
     with aioresponses() as m:
         m.get(
@@ -280,14 +281,32 @@ async def test_request_treats_null_body_as_empty_result() -> None:
             username="u",
             password="p",
             page_size=10,
+            max_retries=2,
+            retry_backoff=0.0,
         ) as conn:
-            records = [rec async for rec in conn.aget_records("incident")]
-            assert records == []
+            with pytest.raises(SnowConnectionError) as exc_info:
+                async for _ in conn.aget_records("incident"):
+                    pass
+            assert "non-object JSON" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
-async def test_request_treats_list_body_as_empty_result() -> None:
-    """Regression: defensive handling for unexpected non-object JSON shapes."""
+async def test_request_recovers_when_null_body_then_valid() -> None:
+    """When a transient null body is followed by a valid response, the SDK
+    must recover (return the valid data) rather than fail or skip."""
+    payload = {"result": [{"sys_id": "abc", "number": "INC1"}]}
+    call_count = {"n": 0}
+
+    def callback(url: str, **kwargs: object) -> object:
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            from aioresponses.core import CallbackResult
+
+            return CallbackResult(status=200, body="null", content_type="application/json")
+        from aioresponses.core import CallbackResult
+
+        return CallbackResult(status=200, payload=payload)
+
     with aioresponses() as m:
         m.get(
             _stats_url(),
@@ -295,20 +314,18 @@ async def test_request_treats_list_body_as_empty_result() -> None:
             status=200,
             repeat=True,
         )
-        m.get(
-            _table_url(),
-            payload=[1, 2, 3],
-            status=200,
-            repeat=True,
-        )
+        m.get(_table_url(), callback=callback, repeat=True)
         async with AsyncSnowConnection(
             instance_url=INSTANCE,
             username="u",
             password="p",
             page_size=10,
+            max_retries=3,
+            retry_backoff=0.0,
         ) as conn:
             records = [rec async for rec in conn.aget_records("incident")]
-            assert records == []
+            assert len(records) == 1
+            assert records[0]["sys_id"] == "abc"
 
 
 @pytest.mark.asyncio
