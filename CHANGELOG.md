@@ -2,6 +2,18 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.8] - 2026-04-28
+
+### Documentation
+
+- README rebuilt around three pre-rendered infographics: data-flow architecture diagram, relative-throughput chart, and an API decision tree. Images live in `docs/_static/` and render on PyPI via raw GitHub URLs.
+- New `scripts/build_assets.py` regenerates the diagrams whenever the asset code changes; uses matplotlib only at build time so PyPI and ReadTheDocs stay matplotlib-free at install.
+- Hero section reorganized with grouped badge rows (install / quality / framework support), tagline, and quick navigation links.
+- Feature grid replaces the bullet list with a three-column table of capability cards.
+- Code examples consolidated into eight collapsible `<details>` sections (sequential, threaded, async, LangChain, LlamaIndex, delta sync, CMDB graph, journals, attachments, auth, large-scale resume recipe) so the page reads short but holds depth.
+- Roadmap rewritten as an HTML table with shields.io status badges (green for shipped, amber for planned).
+- Author card added at the bottom in a clean two-column layout.
+
 ## [0.2.7] - 2026-04-28
 
 ### Documentation
