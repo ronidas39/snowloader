@@ -88,6 +88,41 @@ from snowloader import (
 )
 ```
 
+## Concurrent Sync API
+
+`SnowConnection.concurrent_get_records()` fetches pages in parallel using a `ThreadPoolExecutor`. Each worker thread holds its own `requests.Session`, which keeps connection pools and TLS state isolated. This avoids the connection-reuse failures some ServiceNow front ends exhibit when many concurrent requests share a single client session, and gives sync users the same throughput as async without the `aiohttp` dependency.
+
+```python
+from snowloader import SnowConnection, IncidentLoader
+
+with SnowConnection(
+    instance_url="https://mycompany.service-now.com",
+    username="admin",
+    password="password",
+    page_size=500,
+) as conn:
+    # Get the total before deciding how to fetch
+    total = conn.get_count("incident", query="state=6^close_notesISNOTEMPTY")
+
+    # Threaded paginator yields records in completion order, not sys_created_on order
+    for record in conn.concurrent_get_records(
+        table="incident",
+        query="state=6^close_notesISNOTEMPTY",
+        max_workers=16,
+    ):
+        process(record)
+
+    # Same thing through a loader
+    loader = IncidentLoader(connection=conn, query="state=6^close_notesISNOTEMPTY")
+    docs = loader.concurrent_load(max_workers=16)
+```
+
+Real-world result: 457,247 incidents from a production instance pulled in **20 minutes** at 376 records/second.
+
+When to pick which path:
+- `concurrent_get_records` / `concurrent_load`: sync code, no asyncio integration needed, want maximum throughput out of the box.
+- `aget_records` / `aload`: existing asyncio app, want native `async for` integration with the rest of your event loop.
+
 ## Async API
 
 Pull large tables faster with `AsyncSnowConnection`. Pages are fetched concurrently against a shared `aiohttp` session, which delivers a 10-50x speedup on production-sized extractions.
@@ -254,6 +289,7 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
 |---------|---------|--------|
 | **v0.2** | Async support (`aiohttp` + `async for`) - 10-50x faster | Shipped |
 | **v0.2** | Attachment loader (`sys_attachment` downloads) | Shipped |
+| **v0.2** | Threaded sync paginator (`concurrent_get_records`, `concurrent_load`) | Shipped |
 | **v0.3** | Direct vector store streaming (Pinecone, Weaviate, Chroma) | Planned |
 | **v0.3** | Checkpoint and resume for large loads | Planned |
 | **v1.0** | Custom field mapping for customized instances | Planned |

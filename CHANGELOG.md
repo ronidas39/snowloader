@@ -2,6 +2,14 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.6] - 2026-04-28
+
+### Documentation
+
+- README updated with a `Concurrent Sync API` section showing `get_count`, `concurrent_get_records`, and `concurrent_load`. Roadmap table now lists the threaded paginator as Shipped.
+- New Sphinx page `docs/concurrent.rst` covering when to pick threaded sync vs async, per-thread session isolation, real-world numbers from a 457k-record extraction, and tunables (`max_workers`, `page_size`, `max_retries`, `retry_backoff`).
+- Roadmap consolidated: v0.2 Shipped section now covers the full 0.2.0 through 0.2.5 history including async, attachments, threaded sync, and the connection robustness patches.
+
 ## [0.2.5] - 2026-04-28
 
 ### Added

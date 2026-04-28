@@ -4,17 +4,36 @@ Roadmap
 snowloader is under active development. Here is what is planned for
 upcoming releases.
 
-v0.2 - Async & Attachments (Shipped 2026-04-28)
-------------------------------------------------
+v0.2 - Async, Attachments, Threaded Sync (Shipped 2026-04-28)
+--------------------------------------------------------------
 
-Both features in v0.2 are now live. See the :doc:`async` and
-:doc:`attachments` pages for details. Highlights:
+The v0.2 series shipped three big features and a series of robustness
+patches driven by real-world extractions. See :doc:`async`,
+:doc:`attachments`, and :doc:`concurrent` for usage details.
 
-- ``AsyncSnowConnection`` with concurrent paginated fetches
+**Headline features:**
+
+- ``AsyncSnowConnection`` with concurrent paginated fetches over ``aiohttp``
 - Async variants of every loader and adapter
 - ``AttachmentLoader`` and ``AsyncAttachmentLoader`` for the
   ``sys_attachment`` table with optional eager downloads and a size cap
-- ``parse_labelled_int`` helper for fields like priority, urgency, impact
+- ``parse_labelled_int`` helper for ServiceNow labelled integer fields
+  like ``priority``, ``urgency``, and ``impact``
+- ``SnowConnection.get_count`` and ``concurrent_get_records`` plus
+  ``BaseSnowLoader.concurrent_load`` and ``concurrent_lazy_load`` for
+  threaded sync extractions (per-thread sessions, 376 rec/s on a real
+  457k-record extraction)
+
+**Robustness improvements (across 0.2.1 through 0.2.5):**
+
+- HTTP 500 added to the default retryable status set on both sync and
+  async paths (ServiceNow 500s are typically transient overload)
+- ``AsyncSnowConnection`` now uses ``force_close=True`` on its
+  ``aiohttp.TCPConnector``, so each request gets a fresh TCP connection
+- Non-object JSON bodies (a stray ``null`` returned with HTTP 200) and
+  truncated JSON responses are now treated as transient failures: the
+  SDK retries up to ``max_retries`` and raises ``SnowConnectionError``
+  if the issue persists, instead of silently dropping pages
 
 v0.3 - Vector Store Streaming & Checkpointing
 ----------------------------------------------
