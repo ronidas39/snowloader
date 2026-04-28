@@ -2,6 +2,19 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.2] - 2026-04-28
+
+### Fixed
+
+- `AsyncSnowConnection.aget_records` no longer crashes with `AttributeError: 'NoneType' object has no attribute 'get'` when the API returns a non-object JSON body (e.g. `null` or a list under transient load). Such responses are now logged and treated as an empty result, letting the rest of the pages stream through.
+- `AsyncSnowConnection._request` now validates that the parsed JSON body is a dict before returning, so downstream callers can rely on the `dict[str, Any]` contract.
+
+## [0.2.1] - 2026-04-28
+
+### Changed
+
+- Roadmap entries for Async support and the Attachment loader marked as Shipped.
+
 ## [0.2.0] - 2026-04-28
 
 ### Added

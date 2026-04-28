@@ -255,6 +255,63 @@ async def test_aget_attachment_returns_bytes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_request_treats_null_body_as_empty_result() -> None:
+    """Regression: ServiceNow can return JSON null under transient load.
+
+    Previously this crashed aget_records on ``data.get('result')``. Now we
+    log a warning and treat it as an empty result.
+    """
+    with aioresponses() as m:
+        m.get(
+            _stats_url(),
+            payload={"result": {"stats": {"count": "1"}}},
+            status=200,
+            repeat=True,
+        )
+        m.get(
+            _table_url(),
+            body="null",
+            status=200,
+            content_type="application/json",
+            repeat=True,
+        )
+        async with AsyncSnowConnection(
+            instance_url=INSTANCE,
+            username="u",
+            password="p",
+            page_size=10,
+        ) as conn:
+            records = [rec async for rec in conn.aget_records("incident")]
+            assert records == []
+
+
+@pytest.mark.asyncio
+async def test_request_treats_list_body_as_empty_result() -> None:
+    """Regression: defensive handling for unexpected non-object JSON shapes."""
+    with aioresponses() as m:
+        m.get(
+            _stats_url(),
+            payload={"result": {"stats": {"count": "1"}}},
+            status=200,
+            repeat=True,
+        )
+        m.get(
+            _table_url(),
+            payload=[1, 2, 3],
+            status=200,
+            repeat=True,
+        )
+        async with AsyncSnowConnection(
+            instance_url=INSTANCE,
+            username="u",
+            password="p",
+            page_size=10,
+        ) as conn:
+            records = [rec async for rec in conn.aget_records("incident")]
+            assert records == []
+
+
+@pytest.mark.asyncio
 async def test_aget_attachment_raises_on_404() -> None:
     with aioresponses() as m:
         m.get(

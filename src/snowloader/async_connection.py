@@ -376,13 +376,28 @@ class AsyncSnowConnection:
                         )
 
                     try:
-                        return cast(dict[str, Any], await resp.json(content_type=None))
+                        parsed = await resp.json(content_type=None)
                     except (aiohttp.ContentTypeError, ValueError) as exc:
                         raise SnowConnectionError(
                             f"API returned non-JSON response for {method} {url}",
                             status_code=resp.status,
                             detail=last_body,
                         ) from exc
+
+                    if not isinstance(parsed, dict):
+                        # Some ServiceNow paths can return ``null`` or a list
+                        # under transient load. Treat anything that is not a
+                        # JSON object as an empty result so downstream code
+                        # does not crash on ``data.get(...)``.
+                        logger.warning(
+                            "API returned non-object JSON for %s %s (type=%s); "
+                            "treating as empty result.",
+                            method,
+                            url,
+                            type(parsed).__name__,
+                        )
+                        return {"result": []}
+                    return cast(dict[str, Any], parsed)
             except aiohttp.ClientError as exc:
                 if attempt < self.max_retries:
                     logger.warning(
@@ -489,8 +504,8 @@ class AsyncSnowConnection:
                 page_params["sysparm_offset"] = str(offset)
                 url = f"{self.instance_url}/api/now/table/{table}"
                 data = await self._request("GET", url, params=page_params)
-                raw = data.get("result")
-                if raw is None:
+                raw = data.get("result") if isinstance(data, dict) else None
+                if raw is None or not isinstance(raw, list):
                     return []
                 return cast(list[dict[str, object]], raw)
 
