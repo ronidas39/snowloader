@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "llama-index-readers-snowloader"
-version = "0.1.1"
-description = "ServiceNow data reader for LlamaIndex - load Incidents, CMDB, KB, Changes, Problems, and Catalog into LlamaIndex Documents."
+version = "0.2.0"
+description = "ServiceNow data reader for LlamaIndex - sync and async readers for Incidents, CMDB, KB, Changes, Problems, Catalog, and Attachments."
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
@@ -28,8 +28,11 @@ classifiers = [
 ]
 dependencies = [
     "llama-index-core>=0.11.0",
-    "snowloader>=0.1.0",
+    "snowloader>=0.2.0",
 ]
+
+[project.optional-dependencies]
+async = ["aiohttp>=3.9.0"]
 
 [project.urls]
 Homepage = "https://github.com/ronidas39/snowloader"
@@ -44,6 +47,7 @@ contains_example = false
 import_path = "llama_index.readers.snowloader"
 
 [tool.llamahub.class_authors]
+ServiceNowAttachmentReader = "ronidas39"
 ServiceNowIncidentReader = "ronidas39"
 ServiceNowKBReader = "ronidas39"
 ServiceNowCMDBReader = "ronidas39"

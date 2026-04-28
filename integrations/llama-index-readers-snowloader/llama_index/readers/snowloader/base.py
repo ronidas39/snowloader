@@ -21,6 +21,7 @@ from llama_index.core.readers.base import BaseReader
 from llama_index.core.schema import Document
 
 from snowloader import (
+    AttachmentLoader,
     CatalogLoader,
     ChangeLoader,
     CMDBLoader,
@@ -132,3 +133,13 @@ class ServiceNowCatalogReader(_SnowloaderReader):
     """
 
     _loader_class = CatalogLoader
+
+
+class ServiceNowAttachmentReader(_SnowloaderReader):
+    """Read attachment metadata (and optionally content) from ServiceNow.
+
+    Pulls rows from ``sys_attachment`` and yields one Document per file. Pass
+    ``download=True`` to fetch each file's bytes during iteration.
+    """
+
+    _loader_class = AttachmentLoader
