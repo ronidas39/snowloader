@@ -27,6 +27,7 @@ except ImportError as exc:
     ) from exc
 
 from snowloader.connection import SnowConnection
+from snowloader.loaders.attachments import AttachmentLoader
 from snowloader.loaders.catalog import CatalogLoader
 from snowloader.loaders.changes import ChangeLoader
 from snowloader.loaders.cmdb import CMDBLoader
@@ -125,3 +126,108 @@ class ServiceNowCatalogReader(_LlamaIndexAdapter):
     """LlamaIndex reader for ServiceNow service catalog items."""
 
     _loader_class = CatalogLoader
+
+
+class ServiceNowAttachmentReader(_LlamaIndexAdapter):
+    """LlamaIndex reader for ServiceNow attachments.
+
+    Yields one Document per ``sys_attachment`` row. Pass ``download=True``
+    on the constructor to fetch each file's bytes during iteration.
+    """
+
+    _loader_class = AttachmentLoader
+
+
+# Async readers are exposed only when aiohttp is installed.
+
+try:
+    from snowloader.async_connection import AsyncSnowConnection
+    from snowloader.async_models import (
+        AsyncAttachmentLoader,
+        AsyncBaseSnowLoader,
+        AsyncCatalogLoader,
+        AsyncChangeLoader,
+        AsyncCMDBLoader,
+        AsyncIncidentLoader,
+        AsyncKnowledgeBaseLoader,
+        AsyncProblemLoader,
+    )
+except ImportError:
+    pass
+else:
+
+    class _AsyncLlamaIndexAdapter:
+        """Async base adapter wrapping an Async*Loader for LlamaIndex."""
+
+        _loader_class: type[AsyncBaseSnowLoader]
+        _default_excluded_llm_keys: list[str] = ["sys_id"]
+
+        def __init__(
+            self,
+            connection: AsyncSnowConnection,
+            excluded_llm_metadata_keys: list[str] | None = None,
+            **kwargs: Any,
+        ) -> None:
+            self._excluded_keys = (
+                excluded_llm_metadata_keys
+                if excluded_llm_metadata_keys is not None
+                else self._default_excluded_llm_keys
+            )
+            self._loader = self._loader_class(connection=connection, **kwargs)
+
+        async def aload_data(self) -> list[Document]:
+            """Return a list of LlamaIndex Documents from the async loader."""
+            return [
+                Document(
+                    text=d.page_content,
+                    metadata=d.metadata,
+                    excluded_llm_metadata_keys=self._excluded_keys,
+                )
+                async for d in self._loader.alazy_load()
+            ]
+
+        async def aload_data_since(self, since: datetime) -> list[Document]:
+            """Fetch records updated after the given timestamp."""
+            return [
+                Document(
+                    text=d.page_content,
+                    metadata=d.metadata,
+                    excluded_llm_metadata_keys=self._excluded_keys,
+                )
+                async for d in self._loader.alazy_load(since=since)
+            ]
+
+    class AsyncServiceNowIncidentReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow incidents."""
+
+        _loader_class = AsyncIncidentLoader
+
+    class AsyncServiceNowKBReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow KB articles."""
+
+        _loader_class = AsyncKnowledgeBaseLoader
+
+    class AsyncServiceNowCMDBReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow CMDB CIs (no relationships)."""
+
+        _loader_class = AsyncCMDBLoader
+
+    class AsyncServiceNowChangeReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow change requests."""
+
+        _loader_class = AsyncChangeLoader
+
+    class AsyncServiceNowProblemReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow problem records."""
+
+        _loader_class = AsyncProblemLoader
+
+    class AsyncServiceNowCatalogReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow service catalog items."""
+
+        _loader_class = AsyncCatalogLoader
+
+    class AsyncServiceNowAttachmentReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for ServiceNow attachments."""
+
+        _loader_class = AsyncAttachmentLoader

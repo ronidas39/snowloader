@@ -14,7 +14,7 @@ Author: Roni Das
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from datetime import datetime
 from typing import Any
 
@@ -28,6 +28,7 @@ except ImportError as exc:
     ) from exc
 
 from snowloader.connection import SnowConnection
+from snowloader.loaders.attachments import AttachmentLoader
 from snowloader.loaders.catalog import CatalogLoader
 from snowloader.loaders.changes import ChangeLoader
 from snowloader.loaders.cmdb import CMDBLoader
@@ -108,3 +109,101 @@ class ServiceNowCatalogLoader(_LangChainAdapter):
     """LangChain loader for ServiceNow service catalog items."""
 
     _loader_class = CatalogLoader
+
+
+class ServiceNowAttachmentLoader(_LangChainAdapter):
+    """LangChain loader for ServiceNow file attachments.
+
+    Yields one Document per ``sys_attachment`` record. Set ``download=True``
+    on the constructor to eagerly fetch each file's bytes into the metadata
+    under ``content_bytes``.
+    """
+
+    _loader_class = AttachmentLoader
+
+
+# Async adapters are exposed only when aiohttp is installed. They mirror the
+# sync adapters with `aload`/`alazy_load`/`aload_since` coroutines.
+
+try:
+    from snowloader.async_connection import AsyncSnowConnection
+    from snowloader.async_models import (
+        AsyncAttachmentLoader,
+        AsyncBaseSnowLoader,
+        AsyncCatalogLoader,
+        AsyncChangeLoader,
+        AsyncCMDBLoader,
+        AsyncIncidentLoader,
+        AsyncKnowledgeBaseLoader,
+        AsyncProblemLoader,
+    )
+except ImportError:
+    pass
+else:
+
+    class _AsyncLangChainAdapter:
+        """Async base adapter wrapping an Async*Loader for LangChain.
+
+        Provides the standard async loader surface that LangChain expects:
+        ``aload()`` returns ``list[Document]`` and ``alazy_load()`` is an async
+        iterator of Documents.
+        """
+
+        _loader_class: type[AsyncBaseSnowLoader]
+
+        def __init__(self, connection: AsyncSnowConnection, **kwargs: Any) -> None:
+            self._loader = self._loader_class(connection=connection, **kwargs)
+
+        async def aload(self) -> list[Document]:
+            """Fetch all matching records as LangChain Documents."""
+            return [
+                Document(page_content=d.page_content, metadata=d.metadata)
+                async for d in self._loader.alazy_load()
+            ]
+
+        async def alazy_load(self) -> AsyncIterator[Document]:
+            """Yield LangChain Documents one at a time."""
+            async for snow_doc in self._loader.alazy_load():
+                yield Document(page_content=snow_doc.page_content, metadata=snow_doc.metadata)
+
+        async def aload_since(self, since: datetime) -> list[Document]:
+            """Fetch records updated after the given timestamp."""
+            return [
+                Document(page_content=d.page_content, metadata=d.metadata)
+                async for d in self._loader.alazy_load(since=since)
+            ]
+
+    class AsyncServiceNowIncidentLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow incidents."""
+
+        _loader_class = AsyncIncidentLoader
+
+    class AsyncServiceNowKBLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow Knowledge Base articles."""
+
+        _loader_class = AsyncKnowledgeBaseLoader
+
+    class AsyncServiceNowCMDBLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow CMDB CIs (no relationships)."""
+
+        _loader_class = AsyncCMDBLoader
+
+    class AsyncServiceNowChangeLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow change requests."""
+
+        _loader_class = AsyncChangeLoader
+
+    class AsyncServiceNowProblemLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow problem records."""
+
+        _loader_class = AsyncProblemLoader
+
+    class AsyncServiceNowCatalogLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow service catalog items."""
+
+        _loader_class = AsyncCatalogLoader
+
+    class AsyncServiceNowAttachmentLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for ServiceNow attachments."""
+
+        _loader_class = AsyncAttachmentLoader

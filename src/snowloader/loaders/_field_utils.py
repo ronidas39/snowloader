@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from snowloader.utils.parsing import parse_labelled_int  # noqa: F401
+
 
 def display_value(field: Any) -> str:
     """Extract the human-readable display value from a field.

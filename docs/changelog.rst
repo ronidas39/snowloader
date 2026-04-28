@@ -4,6 +4,35 @@ Changelog
 All notable changes to snowloader are documented here. This project
 follows `Semantic Versioning <https://semver.org/>`_.
 
+v0.2.0 (2026-04-28)
+--------------------
+
+**Async API:**
+
+- ``AsyncSnowConnection`` built on ``aiohttp`` with concurrent paginated fetches
+- ``AsyncBaseSnowLoader`` plus async variants for every existing loader
+- ``aget_records``, ``aget_record``, ``aget_count``, ``aget_attachment`` on the async connection
+- New ``[async]`` install extra: ``pip install snowloader[async]``
+
+**Attachments:**
+
+- ``AttachmentLoader`` for the ``sys_attachment`` table with optional eager downloads, size cap, and selective fetch
+- ``AsyncAttachmentLoader`` for the same flow over the async connection
+- ``SnowConnection.get_attachment`` and ``AsyncSnowConnection.aget_attachment`` for direct binary fetches
+
+**Adapters:**
+
+- ``ServiceNowAttachmentLoader`` (LangChain) and ``ServiceNowAttachmentReader`` (LlamaIndex)
+- Async variants of every adapter: ``AsyncServiceNow*Loader`` and ``AsyncServiceNow*Reader``
+
+**Utilities:**
+
+- ``parse_labelled_int`` public helper for ServiceNow labelled integer fields like priority, urgency, and impact
+
+**Tests:**
+
+- 188 unit tests, up from 124
+
 v0.1.0 (2026-03-25)
 --------------------
 

@@ -332,6 +332,79 @@ class SnowConnection:
 
         logger.info("Completed fetch from '%s': %d records total.", table, total_yielded)
 
+    def get_attachment(self, sys_id: str) -> bytes:
+        """Download the binary content of one ``sys_attachment`` record.
+
+        Hits the ``/api/now/attachment/<sys_id>/file`` endpoint and returns the
+        raw bytes. Honors the connection's auth, retries, and timeout settings.
+
+        Args:
+            sys_id: The ``sys_id`` of the attachment record.
+
+        Returns:
+            Raw bytes of the attachment file.
+
+        Raises:
+            SnowConnectionError: On any non-2xx response or network failure.
+        """
+        if not sys_id or not sys_id.strip():
+            raise SnowConnectionError(
+                "sys_id must not be empty for attachment download.",
+            )
+
+        self._ensure_oauth_token()
+        self._throttle()
+
+        url = f"{self.instance_url}/api/now/attachment/{sys_id}/file"
+        headers: dict[str, str] = {"Accept": "*/*"}
+        if self.auth_type in ("oauth", "client_credentials", "bearer") and self._access_token:
+            headers["Authorization"] = f"Bearer {self._access_token}"
+
+        last_error: SnowConnectionError | None = None
+        for attempt in range(self.max_retries + 1):
+            if attempt > 0:
+                backoff = self.retry_backoff * (2 ** (attempt - 1))
+                time.sleep(backoff)
+
+            try:
+                with self._request_lock:
+                    resp = self._session.get(
+                        url,
+                        headers=headers,
+                        timeout=self.timeout,
+                    )
+                self._last_request_time = time.monotonic()
+            except requests.RequestException as exc:
+                last_error = SnowConnectionError(
+                    f"Network error downloading attachment {sys_id}: {exc}",
+                )
+                continue
+
+            if resp.ok:
+                return resp.content
+
+            if resp.status_code in _RETRYABLE_STATUS_CODES:
+                detail = self._extract_error_detail(resp)
+                last_error = SnowConnectionError(
+                    f"Attachment {sys_id} returned {resp.status_code}: {detail}",
+                    status_code=resp.status_code,
+                    detail=detail,
+                )
+                continue
+
+            detail = self._extract_error_detail(resp)
+            raise SnowConnectionError(
+                f"Attachment {sys_id} returned {resp.status_code}: {detail}",
+                status_code=resp.status_code,
+                detail=detail,
+            )
+
+        if last_error:
+            raise last_error
+        raise SnowConnectionError(  # pragma: no cover
+            f"Unexpected retry loop exit downloading attachment {sys_id}",
+        )
+
     def get_record(self, table: str, sys_id: str) -> dict[str, object]:
         """Fetch a single record by its sys_id.
 

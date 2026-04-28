@@ -38,11 +38,12 @@ retry logic, and memory-efficient streaming.
 
 Key features:
 
-- **6 loaders** for core ServiceNow tables
+- **7 loaders** for core ServiceNow tables (including a dedicated attachment loader)
+- **Async support** via aiohttp for concurrent paginated fetches
 - **CMDB relationship traversal** with concurrent graph walking
 - **Delta sync** - only fetch records updated since your last sync
 - **4 authentication modes** - Basic, OAuth Password, OAuth Client Credentials, Bearer Token
-- **LangChain & LlamaIndex adapters** with zero business logic
+- **LangChain & LlamaIndex adapters** (sync + async) with zero business logic
 - **Production-grade** - retry with backoff, rate limiting, thread safety, proxy support
 - **Fully typed** - PEP 561 compliant with ``py.typed`` marker
 
@@ -55,6 +56,8 @@ Created by **Roni Das** · `GitHub <https://github.com/ronidas39>`_ · `PyPI <ht
    getting-started
    authentication
    loaders
+   attachments
+   async
    adapters
    advanced
 

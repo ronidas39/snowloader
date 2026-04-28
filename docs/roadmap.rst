@@ -4,55 +4,17 @@ Roadmap
 snowloader is under active development. Here is what is planned for
 upcoming releases.
 
-v0.2 - Async & Attachments (Coming Soon)
------------------------------------------
+v0.2 - Async & Attachments (Shipped 2026-04-28)
+------------------------------------------------
 
-**Async support (aiohttp + async for)**
+Both features in v0.2 are now live. See the :doc:`async` and
+:doc:`attachments` pages for details. Highlights:
 
-The current implementation is synchronous. For workloads like CMDB
-relationship traversal (2 API calls per CI) and journal fetching (1 call
-per record), async I/O will deliver 10-50x performance improvements.
-
-Planned API:
-
-.. code-block:: python
-
-   import asyncio
-   from snowloader import AsyncSnowConnection, AsyncIncidentLoader
-
-   async def main():
-       async with AsyncSnowConnection(
-           instance_url="...",
-           username="...",
-           password="...",
-       ) as conn:
-           loader = AsyncIncidentLoader(connection=conn, query="active=true")
-           async for doc in loader.lazy_load():
-               print(doc.page_content[:100])
-
-   asyncio.run(main())
-
-**Attachment loader**
-
-Download files attached to ServiceNow records via the ``sys_attachment``
-API. Supports binary files (PDFs, images, spreadsheets) and integrates
-with document parsing libraries.
-
-Planned API:
-
-.. code-block:: python
-
-   from snowloader import AttachmentLoader
-
-   loader = AttachmentLoader(
-       connection=conn,
-       table="incident",
-       query="active=true",
-   )
-
-   for attachment in loader.lazy_load():
-       print(f"{attachment.metadata['file_name']} ({attachment.metadata['size_bytes']} bytes)")
-       # attachment.page_content contains the file content or extracted text
+- ``AsyncSnowConnection`` with concurrent paginated fetches
+- Async variants of every loader and adapter
+- ``AttachmentLoader`` and ``AsyncAttachmentLoader`` for the
+  ``sys_attachment`` table with optional eager downloads and a size cap
+- ``parse_labelled_int`` helper for fields like priority, urgency, impact
 
 v0.3 - Vector Store Streaming & Checkpointing
 ----------------------------------------------
