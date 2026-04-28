@@ -387,8 +387,26 @@ class AsyncSnowConnection:
                     try:
                         parsed = await resp.json(content_type=None)
                     except (aiohttp.ContentTypeError, ValueError) as exc:
+                        # Truncated or malformed JSON happens occasionally
+                        # under sustained concurrent load (server-side write
+                        # gets cut off). Retry like a transient failure.
+                        if attempt < self.max_retries:
+                            logger.warning(
+                                "API returned non-JSON / truncated response "
+                                "for %s %s: %s; retrying (attempt %d/%d)",
+                                method,
+                                url,
+                                exc,
+                                attempt + 1,
+                                self.max_retries,
+                            )
+                            await asyncio.sleep(backoff)
+                            attempt += 1
+                            backoff *= 2
+                            continue
                         raise SnowConnectionError(
-                            f"API returned non-JSON response for {method} {url}",
+                            f"API returned non-JSON response for {method} {url} "
+                            f"after {self.max_retries} retries",
                             status_code=resp.status,
                             detail=last_body,
                         ) from exc

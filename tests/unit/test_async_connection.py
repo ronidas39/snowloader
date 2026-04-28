@@ -255,6 +255,37 @@ async def test_aget_attachment_returns_bytes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_request_retries_malformed_json_then_raises() -> None:
+    """Truncated or malformed JSON triggers retry, then raises after max_retries."""
+    with aioresponses() as m:
+        m.get(
+            _stats_url(),
+            payload={"result": {"stats": {"count": "1"}}},
+            status=200,
+            repeat=True,
+        )
+        m.get(
+            _table_url(),
+            body='{"result": [{"sys_id": "abc"',  # truncated mid-string
+            status=200,
+            content_type="application/json",
+            repeat=True,
+        )
+        async with AsyncSnowConnection(
+            instance_url=INSTANCE,
+            username="u",
+            password="p",
+            page_size=10,
+            max_retries=2,
+            retry_backoff=0.0,
+        ) as conn:
+            with pytest.raises(SnowConnectionError) as exc_info:
+                async for _ in conn.aget_records("incident"):
+                    pass
+            assert "non-JSON" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
 async def test_request_retries_null_body_then_raises() -> None:
     """ServiceNow occasionally returns 200 with a ``null`` body under load.
 

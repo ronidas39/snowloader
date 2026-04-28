@@ -2,6 +2,12 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.2.4] - 2026-04-28
+
+### Changed
+
+- Truncated or malformed JSON responses are now treated as transient failures and retried up to `max_retries` instead of raising immediately. Some ServiceNow front ends occasionally return cut-off response bodies under sustained concurrent load; this change keeps long extractions alive through those blips.
+
 ## [0.2.3] - 2026-04-28
 
 ### Changed
