@@ -14,6 +14,46 @@ Connection
    :members:
    :special-members: __init__
 
+.. autoclass:: snowloader.SweepIncompleteError
+   :members:
+   :special-members: __init__
+   :show-inheritance:
+
+Sweep Verification
+------------------
+
+.. autoclass:: snowloader.SweepReport
+   :members:
+
+.. autoclass:: snowloader.sweep.SweepTracker
+   :members:
+
+Ordering
+--------
+
+.. automodule:: snowloader.ordering
+   :members:
+
+Field Helpers
+-------------
+
+.. autoclass:: snowloader.ReferenceField
+   :members:
+
+.. autofunction:: snowloader.reference
+
+.. autofunction:: snowloader.display_value
+
+.. autofunction:: snowloader.raw_value
+
+.. autofunction:: snowloader.is_sys_id
+
+.. autofunction:: snowloader.parse_boolean
+
+.. autofunction:: snowloader.expand_reference_keys
+
+.. autofunction:: snowloader.parse_labelled_int
+
 Models
 ------
 
@@ -50,11 +90,17 @@ Loaders
    :members:
    :show-inheritance:
 
-Field Utilities
-~~~~~~~~~~~~~~~
-
-.. automodule:: snowloader.loaders._field_utils
+.. autoclass:: snowloader.AttachmentLoader
    :members:
+   :show-inheritance:
+
+.. autoclass:: snowloader.RelationshipLoader
+   :members:
+   :show-inheritance:
+
+.. autoclass:: snowloader.TableLoader
+   :members:
+   :show-inheritance:
 
 HTML Cleaner
 ~~~~~~~~~~~~

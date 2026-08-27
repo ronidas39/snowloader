@@ -14,6 +14,8 @@ from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 from snowloader.loaders.problems import ProblemLoader
+from snowloader.loaders.relationships import RelationshipLoader
+from snowloader.loaders.table import TableLoader
 
 __all__ = [
     "CatalogLoader",
@@ -22,4 +24,6 @@ __all__ = [
     "IncidentLoader",
     "KnowledgeBaseLoader",
     "ProblemLoader",
+    "RelationshipLoader",
+    "TableLoader",
 ]

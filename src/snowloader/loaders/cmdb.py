@@ -89,7 +89,7 @@ class CMDBLoader(BaseSnowLoader):
         Returns:
             SnowDocument with CI details and relationship mapping.
         """
-        sys_id = str(record.get("sys_id", ""))
+        sys_id = _raw_value(record.get("sys_id"))
         name = _display_value(record.get("name"))
         ci_class = _display_value(record.get("sys_class_name"))
         description = _display_value(record.get("short_description"))
@@ -172,7 +172,10 @@ class CMDBLoader(BaseSnowLoader):
         if self._include_relationships:
             metadata["relationships"] = relationship_list
 
-        return SnowDocument(page_content=page_content, metadata=metadata)
+        return SnowDocument(
+            page_content=page_content,
+            metadata=self._build_metadata(record, metadata),
+        )
 
     def _fetch_relationships(
         self, sys_id: str

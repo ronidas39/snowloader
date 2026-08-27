@@ -19,7 +19,6 @@ from typing import Any
 
 from llama_index.core.readers.base import BaseReader
 from llama_index.core.schema import Document
-
 from snowloader import (
     AttachmentLoader,
     CatalogLoader,
@@ -28,7 +27,9 @@ from snowloader import (
     IncidentLoader,
     KnowledgeBaseLoader,
     ProblemLoader,
+    RelationshipLoader,
     SnowConnection,
+    TableLoader,
 )
 from snowloader.models import BaseSnowLoader, SnowDocument
 
@@ -69,8 +70,21 @@ class _SnowloaderReader(BaseReader):
         return Document(
             text=snow_doc.page_content,
             metadata=snow_doc.metadata,
-            excluded_llm_metadata_keys=self._excluded_keys,
+            excluded_llm_metadata_keys=self._excluded_for(snow_doc),
         )
+
+    def _excluded_for(self, snow_doc: SnowDocument) -> list[str]:
+        """Keys to keep out of the text the LLM sees.
+
+        Identifier companions exist so a document can be joined back to the
+        records it references. A model reading them learns nothing and pays
+        for every one.
+        """
+        excluded = list(self._excluded_keys)
+        excluded.extend(
+            key for key in snow_doc.metadata if key.endswith("_sys_id") and key not in excluded
+        )
+        return excluded
 
 
 class ServiceNowIncidentReader(_SnowloaderReader):
@@ -143,3 +157,24 @@ class ServiceNowAttachmentReader(_SnowloaderReader):
     """
 
     _loader_class = AttachmentLoader
+
+
+class ServiceNowRelationshipReader(_SnowloaderReader):
+    """Read CI relationships from ServiceNow.
+
+    Sweeps ``cmdb_rel_ci`` and yields one Document per edge. Both endpoints
+    and the relationship type arrive as sys_ids alongside their labels, so
+    the result loads into a graph with no resolution step.
+    """
+
+    _loader_class = RelationshipLoader
+
+
+class ServiceNowTableReader(_SnowloaderReader):
+    """Read any ServiceNow table that has no dedicated reader.
+
+    Pass ``table`` on the constructor, and optionally ``content_fields`` to
+    say which columns make up the document text.
+    """
+
+    _loader_class = TableLoader

@@ -59,6 +59,34 @@ Three lines from a ServiceNow instance to a list of documents your vector store 
 
 ---
 
+## Upgrading to 0.3.0
+
+**0.3.0 fixes a data loss bug. If you are on 0.2.x, upgrade.**
+
+ServiceNow offset pagination is only safe over a unique sort key. The API does not guarantee a stable order inside a group of rows that tie on the sort column, so a page boundary landing inside a tied group returns some rows twice and skips others. Every release before 0.3.0 sorted on `sys_created_on`, which is not unique.
+
+Measured on a developer instance, `cmdb_ci` holds 2,919 rows across only 818 distinct `sys_created_on` values, worst tie 31 rows. Three consecutive sweeps:
+
+```text
+run 1: returned=2919 distinct=2915 lost=4 duplicated=4 count_matches_api=True
+run 2: returned=2919 distinct=2915 lost=4 duplicated=4 count_matches_api=True
+run 3: returned=2919 distinct=2915 lost=4 duplicated=4 count_matches_api=True
+```
+
+The count reconciles, so nothing reports a problem. The loss is deterministic, so re-running never surfaces it and diffing two runs shows nothing. On a 30,000 row CMDB that rate is roughly 40 missing CIs.
+
+0.3.0 ends every ORDERBY chain with `sys_id`. Nothing in your code changes. The same table now returns all 2,919 distinct rows on both the sequential and the threaded path.
+
+You can also ask a sweep to prove it was complete:
+
+```python
+records = list(conn.get_records("cmdb_ci", verify=True))   # raises if anything is missing
+```
+
+Two breaking changes come with it, both in loader metadata. The one to check before you upgrade a retrieval pipeline: metadata now carries every field on the record plus an identifier beside each reference, which on a wide table is roughly three times the previous size. If you write the whole metadata dict into a vector store with a per-vector size limit, pass `expand_references=False` to keep the 0.2.x shape. Full detail in [the changelog](https://github.com/ronidas39/snowloader/blob/main/CHANGELOG.md) and [the docs](https://snowloader.readthedocs.io/en/latest/verification.html).
+
+---
+
 ## Architecture
 
 <p align="center">
@@ -71,21 +99,35 @@ snowloader sits between ServiceNow's Table API and whatever LLM stack you are bu
 
 ## Why snowloader?
 
-Building RAG or agentic AI on top of ServiceNow data? Existing tools either cover a single table, ignore relationships, or lock you into one framework. snowloader covers the seven core tables, gives you sync + threaded + async paginators, and stays framework-agnostic at the core so you can plug it into LangChain, LlamaIndex, or your own pipeline.
+Building RAG or agentic AI on top of ServiceNow data? Existing tools either cover a single table, ignore relationships, or lock you into one framework. snowloader covers the core tables plus a generic loader for the rest, gives you sync + threaded + async paginators, and stays framework-agnostic at the core so you can plug it into LangChain, LlamaIndex, or your own pipeline.
 
 <table>
   <tr>
     <td width="33%" valign="top">
-      <h3>Seven loaders</h3>
-      Incidents, Knowledge Base, CMDB, Changes, Problems, Catalog, and Attachments. One consistent interface across all of them.
+      <h3>Sweeps that do not lose rows</h3>
+      Every paginated read sorts on a unique key, so an offset page boundary landing inside a tied timestamp cannot silently drop records.
     </td>
     <td width="33%" valign="top">
+      <h3>Sweeps that prove it</h3>
+      <code>verify=True</code> counts the table first and raises rather than handing back an incomplete extract that looks fine.
+    </td>
+    <td width="33%" valign="top">
+      <h3>Nine loaders</h3>
+      Incidents, Knowledge Base, CMDB, Changes, Problems, Catalog, Attachments, CI relationships, and a generic <code>TableLoader</code> for anything else.
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
       <h3>Three pagination paths</h3>
       Sequential <code>get_records</code>, threaded <code>concurrent_get_records</code>, async <code>aget_records</code>. Pick the one that fits your runtime.
     </td>
-    <td width="33%" valign="top">
+    <td valign="top">
       <h3>Four auth modes</h3>
       Basic, OAuth Password, OAuth Client Credentials, Bearer Token. Switching is a constructor argument.
+    </td>
+    <td valign="top">
+      <h3>Both halves of every field</h3>
+      The readable label and the sys_id you join on, side by side in metadata. No helper to write yourself.
     </td>
   </tr>
   <tr>
@@ -95,7 +137,7 @@ Building RAG or agentic AI on top of ServiceNow data? Existing tools either cove
     </td>
     <td valign="top">
       <h3>CMDB graph walking</h3>
-      Pull configuration items together with their parent / child / depends-on relationships from <code>cmdb_rel_ci</code>.
+      Sweep <code>cmdb_rel_ci</code> once for every edge, or traverse per CI when you only need a few.
     </td>
     <td valign="top">
       <h3>Streaming everywhere</h3>
@@ -150,6 +192,8 @@ uv add snowloader[all]
 | `ProblemLoader` | `problem` | Known error flag normalized to bool |
 | `CatalogLoader` | `sc_cat_item` | Active / inactive normalized to bool |
 | `AttachmentLoader` | `sys_attachment` | Optional eager download with size cap |
+| `RelationshipLoader` | `cmdb_rel_ci` | One document per edge, both endpoints as sys_ids |
+| `TableLoader` | anything | Generic loader for tables with no dedicated one |
 
 Every loader exposes the same interface:
 
@@ -159,9 +203,21 @@ loader.lazy_load()                    # generator
 loader.load_since(datetime_cutoff)    # list[SnowDocument]
 loader.concurrent_load(max_workers)   # threaded
 loader.concurrent_lazy_load(...)      # threaded generator
+
+loader.load(verify=True)              # raises if the sweep lost records
+loader.load(on_error="skip")          # finish past a dead page instead of aborting
 ```
 
 Async siblings (when installed with `[async]`) follow the same shape: `aload`, `alazy_load`, `aload_since`.
+
+Document metadata carries both halves of every reference field, so a record can be joined to what it points at:
+
+```python
+doc.metadata["assignment_group"]         # 'Service Desk'
+doc.metadata["assignment_group_sys_id"]  # 'd625dcce...'
+doc.metadata["priority"]                 # '5 - Planning'
+doc.metadata["priority_value"]           # '5'
+```
 
 ---
 
@@ -182,6 +238,71 @@ The threaded path uses a per-thread `requests.Session`, which keeps connection p
 ---
 
 ## Code recipes
+
+<details>
+<summary><strong>A sweep that proves it was complete</strong></summary>
+
+```python
+from snowloader import SnowConnection, SweepIncompleteError
+
+with SnowConnection(
+    instance_url="https://yourcompany.service-now.com",
+    username="api_user",
+    password="api_pass",
+    page_size=100,          # smaller pages parallelise better
+    order_by="sys_id",      # unique key, and the cheapest sort
+) as conn:
+    try:
+        records = list(
+            conn.concurrent_get_records(
+                "cmdb_ci",
+                max_workers=16,
+                verify=True,        # free here: the count is already fetched
+                on_error="skip",    # finish the run, then complain
+            )
+        )
+    except SweepIncompleteError as exc:
+        alert(f"CMDB extract incomplete: {exc.report}")
+        # table=cmdb_ci expected=30000 returned=29900 distinct=29900
+        # missing=100 duplicated=0 failed_pages=1
+        raise
+```
+
+`verify=True` counts the table before reading it and raises if the sweep did not return that many distinct records. `on_error="skip"` logs a page that could not be fetched after its retries were exhausted, leaves a gap and lets the rest finish, so an unattended run completes and then tells you what it lost instead of dying on page nine hundred.
+</details>
+
+<details>
+<summary><strong>CMDB as a graph, in two sweeps</strong></summary>
+
+```python
+from snowloader import SnowConnection, TableLoader, RelationshipLoader
+
+with SnowConnection(
+    instance_url="https://yourcompany.service-now.com",
+    username="api_user",
+    password="api_pass",
+    display_value="all",
+    order_by="sys_id",
+) as conn:
+    for doc in TableLoader(conn, table="cmdb_ci").lazy_load(verify=True):
+        graph.add_node(
+            doc.metadata["sys_id"],
+            name=doc.metadata.get("name"),
+            # the value half, so this is the table name the CI lives in,
+            # not the pretty label
+            ci_class=doc.metadata.get("sys_class_name_value"),
+        )
+
+    for doc in RelationshipLoader(conn).lazy_load(verify=True):
+        graph.add_edge(
+            doc.metadata["parent_sys_id"],
+            doc.metadata["child_sys_id"],
+            type=doc.metadata["type"],
+        )
+```
+
+Both endpoints and the relationship type come back as identifiers, so the edges load with no resolution step. `CMDBLoader(include_relationships=True)` is still there for walking a handful of CIs, but it costs two extra requests per CI. Measured on a developer instance that came to 2.4 seconds per CI, which projects to about 34 hours for a 50,000 CI estate. Sweeping the whole relationship table on the same instance took 7 seconds.
+</details>
 
 <details>
 <summary><strong>Sequential extraction (the simplest path)</strong></summary>
@@ -443,8 +564,12 @@ For the full pattern with offset-level checkpointing (so a crash mid-run loses a
 | `retry_backoff` | `1.0` | Base delay between retries (doubles each attempt) |
 | `request_delay` | `0.0` | Minimum seconds between requests (rate limiting) |
 | `display_value` | `"true"` | `sysparm_display_value` setting (`true` / `false` / `all`) |
+| `order_by` | `"sys_created_on"` | Sort column, or list of columns. `sys_id` appended as a unique tiebreak. `None` disables ordering |
+| `since_field` | `"sys_updated_on"` | Column a delta sync compares its cutoff against |
 | `proxy` | `None` | HTTP / HTTPS proxy URL |
 | `verify` | `True` | SSL verification (or path to a custom CA bundle) |
+
+`AsyncSnowConnection` takes the same arguments plus `concurrency` (default 16) and `keep_alive` (default `False`, which trades a TLS handshake per request for immunity to the empty-body responses some ServiceNow front ends return on reused connections under load). Measure both against your own instance before turning it on.
 
 See the [full documentation](https://snowloader.readthedocs.io/en/latest/configuration.html) for every parameter.
 
@@ -485,12 +610,32 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
   </tr>
   <tr>
     <td><strong>v0.3</strong></td>
-    <td>Direct vector store streaming (Pinecone, Weaviate, Chroma, Qdrant)</td>
-    <td><img src="https://img.shields.io/badge/planned-f59e0b.svg" alt="Planned"></td>
+    <td>Deterministic pagination: every ORDERBY chain ends in <code>sys_id</code>, so offset paging cannot lose rows to a tied sort column</td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
   </tr>
   <tr>
     <td><strong>v0.3</strong></td>
-    <td>Checkpoint and resume for very large loads</td>
+    <td>Sweep verification (<code>verify=True</code>, <code>SweepReport</code>, <code>SweepIncompleteError</code>) and a partial failure policy (<code>on_error="skip"</code>)</td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
+  </tr>
+  <tr>
+    <td><strong>v0.3</strong></td>
+    <td>Reference fields as both halves everywhere, plus public field helpers (<code>reference</code>, <code>raw_value</code>, <code>expand_reference_keys</code>)</td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
+  </tr>
+  <tr>
+    <td><strong>v0.3</strong></td>
+    <td>Generic <code>TableLoader</code>, <code>RelationshipLoader</code>, <code>aconcurrent_get_records</code>, configurable <code>order_by</code> and <code>since_field</code></td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
+  </tr>
+  <tr>
+    <td><strong>v0.4</strong></td>
+    <td>Keyset pagination and checkpoint / resume for very large loads</td>
+    <td><img src="https://img.shields.io/badge/planned-f59e0b.svg" alt="Planned"></td>
+  </tr>
+  <tr>
+    <td><strong>v0.4</strong></td>
+    <td>Direct vector store streaming (Pinecone, Weaviate, Chroma, Qdrant)</td>
     <td><img src="https://img.shields.io/badge/planned-f59e0b.svg" alt="Planned"></td>
   </tr>
   <tr>
@@ -499,6 +644,8 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
     <td><img src="https://img.shields.io/badge/planned-f59e0b.svg" alt="Planned"></td>
   </tr>
 </table>
+
+Write support stays out of scope. A read-only guarantee is the reason somebody points this at production without raising a change, and a read library that starts writing has to grow opinions about Data Policies, choice lists and business rules or it becomes a polite way to corrupt a CMDB. If it ever happens it will be a sibling package sharing connection, auth and retry.
 
 ---
 

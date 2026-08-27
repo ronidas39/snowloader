@@ -30,6 +30,10 @@ from typing import Any, cast
 
 import requests
 
+from snowloader.exceptions import SnowConnectionError, SweepIncompleteError
+from snowloader.ordering import DEFAULT_ORDER_BY, OrderBy, normalise_order_by
+from snowloader.sweep import SweepReport, SweepTracker
+
 logger = logging.getLogger(__name__)
 
 # Retry defaults
@@ -39,29 +43,33 @@ _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _MAX_PAGE_SIZE = 10000
 _MIN_PAGE_SIZE = 1
 
+# Policies for what a sweep does when a page cannot be fetched.
+_ON_ERROR_POLICIES = ("raise", "skip")
+
+# The sequential paginator stops when a page comes back short, so a run under
+# on_error="skip" where every page fails has nothing to tell it the table
+# ended. This bounds it. Reset by any page that succeeds, so a flaky instance
+# mid-sweep is still tolerated; only a sustained run of failures gives up.
+_MAX_CONSECUTIVE_SKIPPED_PAGES = 10
+
+# Column a delta sync filters on, and the format ServiceNow expects the
+# cutoff in. UTC, because that is what the API compares against regardless
+# of the user's display timezone.
+_DEFAULT_SINCE_FIELD = "sys_updated_on"
+_SINCE_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+
 # Regex for validating ServiceNow instance URLs
 _INSTANCE_URL_PATTERN = re.compile(r"^https?://[a-zA-Z0-9][-a-zA-Z0-9.]+\.[a-zA-Z]{2,}")
 
-
-class SnowConnectionError(Exception):
-    """Raised when something goes wrong talking to the ServiceNow API.
-
-    Attributes:
-        status_code: HTTP status code if the error came from an API response.
-            None for network-level failures (timeout, DNS, connection refused).
-        detail: Human-readable error detail extracted from the response body
-            or the underlying exception message.
-    """
-
-    def __init__(
-        self,
-        message: str,
-        status_code: int | None = None,
-        detail: str = "",
-    ) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.detail = detail
+# SnowConnectionError moved to snowloader.exceptions so the sync and async
+# connections can share it. Re-exported here because every release before
+# 0.3.0 documented importing it from this module.
+__all__ = [
+    "SnowConnection",
+    "SnowConnectionError",
+    "SweepIncompleteError",
+    "SweepReport",
+]
 
 
 class SnowConnection:
@@ -111,6 +119,17 @@ class SnowConnection:
             ``"true"`` (default) returns human-readable labels for
             reference fields. ``"false"`` returns raw values. ``"all"``
             returns both ``{display_value, value}`` dicts.
+        order_by: Column, or list of columns, every paginated read sorts by.
+            Defaults to ``"sys_created_on"``. ``sys_id`` is appended
+            automatically as a tiebreak unless the chain already sorts on
+            it, because offset pagination over a non-unique column loses
+            records. Pass a ready-made clause such as
+            ``"ORDERBYDESCsys_created_on"`` for a descending sort, or None
+            to send no ORDERBY at all.
+        since_field: Column a delta sync compares its cutoff against.
+            Defaults to ``"sys_updated_on"``, which catches edits to old
+            records. Set it to ``"sys_created_on"`` on an append-only table
+            where edits do not matter and the update column is not indexed.
         proxy: Optional proxy URL, e.g. ``"http://proxy:8080"``.
             Applied to all HTTP(S) requests.
         verify: SSL verification. ``True`` (default) uses system CA
@@ -146,6 +165,8 @@ class SnowConnection:
         retry_backoff: float = _DEFAULT_RETRY_BACKOFF,
         request_delay: float = 0.0,
         display_value: str = "true",
+        order_by: OrderBy = DEFAULT_ORDER_BY,
+        since_field: str = _DEFAULT_SINCE_FIELD,
         proxy: str | None = None,
         verify: bool | str = True,
     ) -> None:
@@ -186,7 +207,16 @@ class SnowConnection:
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.request_delay = request_delay
+        if not since_field or not since_field.strip():
+            raise SnowConnectionError(
+                "since_field must name a column.",
+                detail="Use 'sys_updated_on' for changes or 'sys_created_on' for new records.",
+            )
+
         self.display_value = display_value
+        self.order_by = order_by
+        self.since_field = since_field.strip()
+        self._order_clauses = normalise_order_by(order_by)
         self._last_request_time: float = 0.0
         self._request_lock = threading.Lock()
 
@@ -262,6 +292,8 @@ class SnowConnection:
         query: str | None = None,
         fields: list[str] | None = None,
         since: datetime | None = None,
+        verify: bool = False,
+        on_error: str = "raise",
     ) -> Generator[dict[str, object], None, None]:
         """Fetch records from a ServiceNow table with automatic pagination.
 
@@ -273,17 +305,33 @@ class SnowConnection:
         Args:
             table: ServiceNow table name, e.g. "incident" or "cmdb_ci_server".
             query: Optional encoded query string, e.g. "active=true^priority=1".
-                An ORDERBYsys_created_on suffix is appended automatically.
+                The connection's ORDERBY chain is appended automatically.
             fields: Optional list of field names to include in the response.
                 When omitted, ServiceNow returns all fields on the table.
             since: Optional datetime for delta/incremental sync. When set,
-                only records updated after this timestamp are returned.
+                only records changed after this timestamp are returned, as
+                measured by the connection's ``since_field``.
+            verify: When True, count the table before reading it and raise
+                if the sweep did not return that many distinct records.
+                Costs one extra request, and about 100 bytes of memory
+                per record for the keys, so it is opt-in.
+            on_error: ``"raise"`` (default) aborts the sweep when a page
+                cannot be fetched. ``"skip"`` logs the page, leaves a gap
+                and carries on, which is what an unattended run usually
+                wants. Combine it with ``verify=True`` to still find out.
 
         Yields:
             Individual record dicts straight from the ServiceNow response.
 
         Raises:
-            SnowConnectionError: On any non-2xx response from the API.
+            SnowConnectionError: On any non-2xx response from the API, or if
+                ``on_error`` is not a known policy.
+            SweepIncompleteError: If ``verify`` is set and records went
+                missing or arrived twice.
+
+        Example:
+            >>> for record in conn.get_records("cmdb_ci", verify=True):
+            ...     print(record["sys_id"])
         """
         if not table or not table.strip():
             raise SnowConnectionError(
@@ -291,9 +339,24 @@ class SnowConnection:
                 detail="Provide a ServiceNow table name like 'incident'.",
             )
 
+        self._check_on_error(on_error)
+        if verify:
+            self._check_verifiable(fields)
+
         params = self._build_query_params(query=query, fields=fields, since=since)
+        full_query = params.get("sysparm_query")
+
+        tracker: SweepTracker | None = None
+        if verify:
+            tracker = SweepTracker(
+                table=table,
+                query=full_query,
+                expected=self.get_count(table, query=query, since=since),
+            )
+
         offset = 0
         total_yielded = 0
+        consecutive_failures = 0
 
         logger.info(
             "Starting paginated fetch from '%s' (page_size=%d)",
@@ -305,7 +368,31 @@ class SnowConnection:
             params["sysparm_offset"] = str(offset)
             url = f"{self.instance_url}/api/now/table/{table}"
 
-            response_data = self._request("GET", url, params=params)
+            try:
+                response_data = self._request("GET", url, params=params)
+            except SnowConnectionError as exc:
+                if on_error != "skip":
+                    raise
+                consecutive_failures += 1
+                if consecutive_failures > _MAX_CONSECUTIVE_SKIPPED_PAGES:
+                    raise SnowConnectionError(
+                        f"Gave up on '{table}' after {consecutive_failures} consecutive "
+                        f"page failures under on_error='skip'. The last error was: {exc}",
+                        status_code=exc.status_code,
+                        detail=exc.detail,
+                    ) from exc
+                logger.error(
+                    "Skipping page at offset %d of '%s' after an unrecoverable error: %s",
+                    offset,
+                    table,
+                    exc,
+                )
+                if tracker:
+                    tracker.page_failed()
+                offset += self.page_size
+                continue
+
+            consecutive_failures = 0
             raw_result = response_data.get("result")
 
             if raw_result is None:
@@ -316,6 +403,10 @@ class SnowConnection:
                 break
 
             records: list[dict[str, object]] = cast(list[dict[str, object]], raw_result)
+
+            if tracker:
+                for record in records:
+                    tracker.observe(record)
 
             yield from records
             total_yielded += len(records)
@@ -332,6 +423,9 @@ class SnowConnection:
             )
 
         logger.info("Completed fetch from '%s': %d records total.", table, total_yielded)
+
+        if tracker:
+            tracker.check()
 
     def get_count(
         self,
@@ -364,8 +458,8 @@ class SnowConnection:
         if query:
             query_parts.append(query)
         if since:
-            timestamp = since.strftime("%Y-%m-%d %H:%M:%S")
-            query_parts.append(f"sys_updated_on>{timestamp}")
+            timestamp = since.strftime(_SINCE_TIMESTAMP_FORMAT)
+            query_parts.append(f"{self.since_field}>{timestamp}")
         if query_parts:
             params["sysparm_query"] = "^".join(query_parts)
 
@@ -385,6 +479,8 @@ class SnowConnection:
         fields: list[str] | None = None,
         since: datetime | None = None,
         max_workers: int = 16,
+        verify: bool = False,
+        on_error: str = "raise",
     ) -> Generator[dict[str, object], None, None]:
         """Fetch records using a thread pool so pages download in parallel.
 
@@ -397,9 +493,9 @@ class SnowConnection:
         ServiceNow front ends exhibit when many concurrent requests share
         a single client session.
 
-        Records are yielded in the order pages complete, NOT in
-        ``ORDERBYsys_created_on`` order. If you need ordered output, sort
-        the consumed list yourself by the relevant timestamp.
+        Records are yielded in the order pages complete, NOT in the order the
+        ORDERBY chain requested. If you need ordered output, sort the
+        consumed list yourself.
 
         Args:
             table: ServiceNow table name.
@@ -407,18 +503,33 @@ class SnowConnection:
             fields: Optional list of field names to request.
             since: Optional delta sync cutoff.
             max_workers: Number of worker threads (default 16). Each worker
-                holds its own ``requests.Session``.
+                holds its own ``requests.Session``. Measured against a
+                developer instance, throughput climbs steeply to 16 and then
+                turns over: 32 workers came out slower than 16, not faster.
+            verify: When True, raise if the sweep did not return as many
+                distinct records as the count this method already fetched to
+                plan its pages. Free here, since that count exists either way.
+            on_error: ``"raise"`` (default) aborts the sweep when a page
+                cannot be fetched. ``"skip"`` logs the page, leaves a gap and
+                lets the remaining pages finish.
 
         Yields:
             One record dict at a time as pages arrive.
 
         Raises:
-            SnowConnectionError: On count failure or any unrecoverable page error.
+            SnowConnectionError: On count failure, any unrecoverable page
+                error, or an unknown ``on_error`` policy.
+            SweepIncompleteError: If ``verify`` is set and records went
+                missing or arrived twice.
         """
         if not table or not table.strip():
             raise SnowConnectionError("table name must not be empty.")
         if max_workers < 1:
             raise SnowConnectionError(f"max_workers must be >= 1, got {max_workers}.")
+
+        self._check_on_error(on_error)
+        if verify:
+            self._check_verifiable(fields)
 
         # Build the same query the sequential path would
         params = self._build_query_params(query=query, fields=fields, since=since)
@@ -438,6 +549,10 @@ class SnowConnection:
             max_workers,
         )
 
+        tracker: SweepTracker | None = None
+        if verify:
+            tracker = SweepTracker(table=table, query=full_query, expected=total)
+
         thread_local = threading.local()
 
         def get_thread_session() -> requests.Session:
@@ -451,12 +566,24 @@ class SnowConnection:
                 thread_local.session = sess
             return sess
 
-        def fetch_page(offset: int) -> list[dict[str, object]]:
+        def fetch_page(offset: int) -> list[dict[str, object]] | None:
+            """Fetch one page, or return None when it was skipped."""
             sess = get_thread_session()
             page_params = dict(params)
             page_params["sysparm_offset"] = str(offset)
             url = f"{self.instance_url}/api/now/table/{table}"
-            data = self._request_with_session(sess, "GET", url, params=page_params)
+            try:
+                data = self._request_with_session(sess, "GET", url, params=page_params)
+            except SnowConnectionError as exc:
+                if on_error != "skip":
+                    raise
+                logger.error(
+                    "Skipping page at offset %d of '%s' after an unrecoverable error: %s",
+                    offset,
+                    table,
+                    exc,
+                )
+                return None
             raw = data.get("result") if isinstance(data, dict) else None
             if raw is None or not isinstance(raw, list):
                 return []
@@ -466,7 +593,17 @@ class SnowConnection:
             futures = [pool.submit(fetch_page, i * self.page_size) for i in range(page_count)]
             for fut in as_completed(futures):
                 records = fut.result()
+                if records is None:
+                    if tracker:
+                        tracker.page_failed()
+                    continue
+                if tracker:
+                    for record in records:
+                        tracker.observe(record)
                 yield from records
+
+        if tracker:
+            tracker.check()
 
     def get_attachment(self, sys_id: str) -> bytes:
         """Download the binary content of one ``sys_attachment`` record.
@@ -573,6 +710,41 @@ class SnowConnection:
 
     # -- Internal helpers --
 
+    @staticmethod
+    def _check_on_error(on_error: str) -> None:
+        """Reject an unknown partial-failure policy before any request runs.
+
+        Raises:
+            SnowConnectionError: If the policy is not one this library knows.
+        """
+        if on_error not in _ON_ERROR_POLICIES:
+            raise SnowConnectionError(
+                f"on_error must be one of {_ON_ERROR_POLICIES}, got '{on_error}'.",
+                detail=(
+                    "'raise' aborts the sweep on the first unrecoverable page. "
+                    "'skip' leaves a gap and carries on."
+                ),
+            )
+
+    @staticmethod
+    def _check_verifiable(fields: list[str] | None) -> None:
+        """Refuse to verify a sweep whose primary key was projected away.
+
+        Verification counts distinct sys_ids. Without that column there is
+        nothing to count, and reporting a sweep as verified would be a lie.
+
+        Raises:
+            SnowConnectionError: If a field list was given and omits sys_id.
+        """
+        if fields and "sys_id" not in fields:
+            raise SnowConnectionError(
+                "verify=True needs 'sys_id' in the requested fields.",
+                detail=(
+                    "Sweep verification counts distinct sys_id values. Add "
+                    "'sys_id' to fields, or drop verify."
+                ),
+            )
+
     def _build_query_params(
         self,
         query: str | None = None,
@@ -580,6 +752,10 @@ class SnowConnection:
         since: datetime | None = None,
     ) -> dict[str, str]:
         """Assemble the sysparm_* query parameters for a table request.
+
+        The caller's own query is placed first so their filters, and any
+        ORDERBY they wrote themselves, take precedence. The connection's
+        order chain is appended after it.
 
         Args:
             query: User-supplied encoded query, or None.
@@ -598,11 +774,13 @@ class SnowConnection:
         if query:
             query_parts.append(query)
         if since:
-            timestamp = since.strftime("%Y-%m-%d %H:%M:%S")
-            query_parts.append(f"sys_updated_on>{timestamp}")
+            timestamp = since.strftime(_SINCE_TIMESTAMP_FORMAT)
+            query_parts.append(f"{self.since_field}>{timestamp}")
 
-        query_parts.append("ORDERBYsys_created_on")
-        params["sysparm_query"] = "^".join(query_parts)
+        query_parts.extend(self._order_clauses)
+
+        if query_parts:
+            params["sysparm_query"] = "^".join(query_parts)
 
         if fields:
             params["sysparm_fields"] = ",".join(fields)

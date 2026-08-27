@@ -16,7 +16,8 @@ from datetime import datetime
 from typing import Any, cast
 
 from snowloader.async_connection import AsyncSnowConnection
-from snowloader.connection import SnowConnectionError
+from snowloader.exceptions import SnowConnectionError
+from snowloader.fields import raw_value
 from snowloader.loaders.catalog import CatalogLoader
 from snowloader.loaders.changes import ChangeLoader
 from snowloader.loaders.cmdb import CMDBLoader
@@ -45,6 +46,9 @@ class AsyncBaseSnowLoader:
         query: Optional encoded query string.
         fields: Optional list of field names.
         include_journals: Whether to fetch journal entries.
+        expand_references: Surface every field's second half in metadata.
+            Defaults to True. See :class:`snowloader.BaseSnowLoader`.
+        include_raw: Attach the untouched API record under ``"raw"``.
     """
 
     table: str = ""
@@ -56,12 +60,16 @@ class AsyncBaseSnowLoader:
         query: str | None = None,
         fields: list[str] | None = None,
         include_journals: bool = False,
+        expand_references: bool = True,
+        include_raw: bool = False,
         **loader_kwargs: Any,
     ) -> None:
         self._connection = connection
         self._query = query
         self._fields = fields
         self._include_journals = include_journals
+        self._expand_references = expand_references
+        self._include_raw = include_raw
         self._loader_kwargs = loader_kwargs
 
         if self._sync_loader_class is None:
@@ -81,26 +89,52 @@ class AsyncBaseSnowLoader:
         assembler_any._query = query
         assembler_any._fields = fields
         assembler_any._include_journals = include_journals
+        assembler_any._expand_references = expand_references
+        assembler_any._include_raw = include_raw
         for key, val in loader_kwargs.items():
             setattr(assembler_any, f"_{key}", val)
         self._assembler = assembler
         self.table = self._assembler.table
 
-    async def aload(self) -> list[SnowDocument]:
-        """Fetch all matching records as a list of SnowDocuments."""
-        return [doc async for doc in self.alazy_load()]
+    async def aload(self, verify: bool = False, on_error: str = "raise") -> list[SnowDocument]:
+        """Fetch all matching records as a list of SnowDocuments.
 
-    async def alazy_load(self, since: datetime | None = None) -> AsyncIterator[SnowDocument]:
-        """Yield SnowDocuments one at a time using concurrent pagination."""
+        Args:
+            verify: Raise if the sweep did not return every record.
+            on_error: ``"raise"`` (default) or ``"skip"``.
+
+        Returns:
+            List of SnowDocument instances.
+        """
+        return [doc async for doc in self.alazy_load(verify=verify, on_error=on_error)]
+
+    async def alazy_load(
+        self,
+        since: datetime | None = None,
+        verify: bool = False,
+        on_error: str = "raise",
+    ) -> AsyncIterator[SnowDocument]:
+        """Yield SnowDocuments one at a time using concurrent pagination.
+
+        Args:
+            since: Optional delta sync cutoff.
+            verify: Raise if the sweep did not return every record.
+            on_error: ``"raise"`` (default) or ``"skip"``.
+
+        Yields:
+            SnowDocument instances, in page completion order.
+        """
         async for record in self._connection.aget_records(
             table=self.table,
             query=self._query,
             fields=self._fields,
             since=since,
+            verify=verify,
+            on_error=on_error,
         ):
             doc = self._assembler._record_to_document(record)
             if self._include_journals:
-                sys_id = str(record.get("sys_id", ""))
+                sys_id = raw_value(record.get("sys_id"))
                 if sys_id:
                     journals = await self._afetch_journals(sys_id)
                     journal_text = self._assembler._format_journals(journals)
@@ -109,7 +143,7 @@ class AsyncBaseSnowLoader:
             yield doc
 
     async def aload_since(self, since: datetime) -> list[SnowDocument]:
-        """Fetch records updated after ``since``."""
+        """Fetch records changed after ``since``."""
         return [doc async for doc in self.alazy_load(since=since)]
 
     async def _afetch_journals(self, sys_id: str) -> list[dict[str, Any]]:
@@ -238,12 +272,19 @@ class AsyncAttachmentLoader(AsyncBaseSnowLoader):
         assembler_any._download = False
         assembler_any._max_size_bytes = max_size_bytes
 
-    async def alazy_load(self, since: datetime | None = None) -> AsyncIterator[SnowDocument]:
+    async def alazy_load(
+        self,
+        since: datetime | None = None,
+        verify: bool = False,
+        on_error: str = "raise",
+    ) -> AsyncIterator[SnowDocument]:
         async for record in self._connection.aget_records(
             table=self.table,
             query=self._query,
             fields=self._fields,
             since=since,
+            verify=verify,
+            on_error=on_error,
         ):
             doc = self._assembler._record_to_document(record)
             if self._download:

@@ -35,6 +35,8 @@ from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 from snowloader.loaders.problems import ProblemLoader
+from snowloader.loaders.relationships import RelationshipLoader
+from snowloader.loaders.table import TableLoader
 from snowloader.models import BaseSnowLoader
 
 logger = logging.getLogger(__name__)
@@ -120,6 +122,26 @@ class ServiceNowAttachmentLoader(_LangChainAdapter):
     """
 
     _loader_class = AttachmentLoader
+
+
+class ServiceNowRelationshipLoader(_LangChainAdapter):
+    """LangChain loader for ServiceNow CI relationships.
+
+    Yields one Document per ``cmdb_rel_ci`` edge, with both endpoints
+    available as sys_ids in metadata.
+    """
+
+    _loader_class = RelationshipLoader
+
+
+class ServiceNowTableLoader(_LangChainAdapter):
+    """LangChain loader for any ServiceNow table.
+
+    Pass ``table`` on the constructor, and optionally ``content_fields`` to
+    say which columns make up the document text.
+    """
+
+    _loader_class = TableLoader
 
 
 # Async adapters are exposed only when aiohttp is installed. They mirror the

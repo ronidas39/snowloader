@@ -1,13 +1,23 @@
 Loaders
 =======
 
-snowloader provides six loaders, each targeting a specific ServiceNow table.
-All loaders share the same interface inherited from
-:class:`~snowloader.models.BaseSnowLoader`:
+snowloader provides a loader for each of the core ServiceNow tables, plus a
+generic one for everything else. All of them share the same interface
+inherited from :class:`~snowloader.models.BaseSnowLoader`:
 
 - ``load()`` - returns a list of all matching documents
 - ``lazy_load()`` - yields documents one at a time (memory efficient)
-- ``load_since(datetime)`` - delta sync, fetches only updated records
+- ``load_since(datetime)`` - delta sync, fetches only records that changed
+- ``concurrent_load(max_workers)`` - the threaded paginator
+- ``concurrent_lazy_load(...)`` - the threaded paginator, streaming
+
+Every one of those takes ``verify=True`` to raise rather than return an
+incomplete extract, and ``on_error="skip"`` to finish past a page that could
+not be fetched. See :doc:`verification`.
+
+Every one of them also takes ``expand_references`` and ``include_raw``, which
+control how much of the record reaches document metadata. See
+:doc:`references`.
 
 IncidentLoader
 --------------
@@ -137,3 +147,66 @@ request services.
 
    loader = CatalogLoader(connection=conn, query="active=true")
    docs = loader.load()
+
+RelationshipLoader
+------------------
+
+Sweeps ``cmdb_rel_ci`` and returns one document per edge. Both endpoints and
+the relationship type arrive as sys_ids alongside their labels, so the result
+loads into a graph with no resolution step.
+
+.. code-block:: python
+
+   from snowloader import RelationshipLoader
+
+   for doc in RelationshipLoader(connection=conn).lazy_load(verify=True):
+       graph.add_edge(
+           doc.metadata["parent_sys_id"],
+           doc.metadata["child_sys_id"],
+           type=doc.metadata["type"],
+       )
+
+Prefer this over :class:`~snowloader.CMDBLoader` with
+``include_relationships=True`` for anything more than a handful of CIs. That
+option issues two extra requests per configuration item. Measured on a
+developer instance, that came to 2.4 seconds per CI, which projects to about
+34 hours for a 50,000 CI estate. Sweeping the whole ``cmdb_rel_ci`` table on
+the same instance took 7 seconds and returned every edge.
+
+Pass ``query`` to narrow it, for instance ``f"parent={sys_id}"`` for one CI's
+outbound edges, or a type filter for one kind of relationship.
+
+TableLoader
+-----------
+
+A loader for any table that does not have a dedicated one. Same document
+shape, same metadata treatment, no subclassing.
+
+.. code-block:: python
+
+   from snowloader import TableLoader
+
+   loader = TableLoader(
+       connection=conn,
+       table="sc_task",
+       query="active=true",
+   )
+   for doc in loader.lazy_load():
+       print(doc.metadata["assignment_group_sys_id"])
+
+Page content comes from ``content_fields`` when you give them:
+
+.. code-block:: python
+
+   TableLoader(
+       conn,
+       table="sys_user",
+       content_fields=["name", "title", "department"],
+   )
+
+When you do not, the loader uses whichever of the usual text columns the
+record actually has (``short_description``, ``description``, ``name``,
+``title``, ``text``, ``comments``, ``close_notes``, ``work_notes``), so an
+unfamiliar table still produces something readable. A link table with no text
+at all produces documents with empty content and full metadata, which is the
+right answer for that shape rather than an error.

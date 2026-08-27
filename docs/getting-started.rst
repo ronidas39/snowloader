@@ -90,7 +90,30 @@ Load incidents and iterate over them:
 Each document has two parts:
 
 - ``page_content`` - structured text formatted for LLM consumption
-- ``metadata`` - a dict with ``sys_id``, ``number``, ``table``, and other fields useful for filtering and linking
+- ``metadata`` - a dict with ``sys_id``, ``number``, ``table``, and every
+  other field on the record. Reference fields appear twice: the readable
+  label under the field's own name, and the identifier you can join on under
+  a ``_sys_id`` companion. See :doc:`references`.
+
+Checking the load was complete
+------------------------------
+
+A paginated read can come up short without failing, so any run you are not
+watching should say so rather than hand back a quiet gap:
+
+.. code-block:: python
+
+   from snowloader import SweepIncompleteError
+
+   try:
+       all_docs = loader.load(verify=True)
+   except SweepIncompleteError as exc:
+       print(exc.report)
+       raise
+
+``verify=True`` counts the table before reading it and raises if the load did
+not return that many distinct records. :doc:`verification` explains what it
+is guarding against and what it costs.
 
 Using with LangChain
 --------------------
@@ -142,6 +165,10 @@ Next Steps
 ----------
 
 - :doc:`authentication` - Learn about all 4 auth modes (Basic, OAuth, Bearer Token)
-- :doc:`loaders` - Explore all 6 loaders with examples
+- :doc:`loaders` - Every loader, with examples
+- :doc:`verification` - Why a sweep can quietly lose rows, and how to prove
+  yours did not
+- :doc:`references` - Getting the sys_id behind a label, and the class name
+  trap
 - :doc:`advanced` - Delta sync, CMDB relationships, journal entries
 - :doc:`configuration` - Tune timeouts, retries, rate limiting, and more

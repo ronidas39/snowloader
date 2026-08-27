@@ -21,9 +21,14 @@ venv/
 docs/_build/
 
 # Project management files (internal use only)
-CLAUDE.md
-.claude/
 .status
 GETTING_STARTED.md
 docs/tasks/
 docs/servicenow_api.md
+
+# Measurement output from scripts/. The scripts are tracked, their run
+# artefacts are not: they are specific to whichever instance produced them.
+*_evidence.json
+benchmark_v030.json
+relationship_cost.json
+async_bench*.json

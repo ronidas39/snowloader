@@ -60,6 +60,14 @@ SnowConnection Parameters
      - ``str``
      - ``"true"``
      - Controls ``sysparm_display_value``. ``"true"`` returns human-readable labels. ``"false"`` returns raw values. ``"all"`` returns both in ``{display_value, value}`` dicts.
+   * - ``order_by``
+     - ``str | list[str] | None``
+     - ``"sys_created_on"``
+     - Column, or columns, every paginated read sorts by. ``sys_id`` is appended as a unique tiebreak unless the chain already sorts on it, because offset pagination over a non-unique column loses records. Accepts a ready-made clause such as ``"ORDERBYDESCsys_created_on"``. ``None`` sends no ORDERBY at all. An empty string or empty list is refused. See :doc:`verification`.
+   * - ``since_field``
+     - ``str``
+     - ``"sys_updated_on"``
+     - Column a delta sync compares its cutoff against. Set it to ``"sys_created_on"`` on an append-only table, or where the update column is not indexed.
    * - ``proxy``
      - ``str``
      - ``None``
@@ -98,6 +106,39 @@ All loaders accept these parameters (inherited from ``BaseSnowLoader``):
      - ``bool``
      - ``False``
      - Fetch and append work notes/comments from ``sys_journal_field``.
+   * - ``expand_references``
+     - ``bool``
+     - ``True``
+     - Surface every field on the record in metadata, with a companion key holding the second half of any field whose halves differ. ``False`` restores the curated-only metadata from 0.2.x. See :doc:`references`.
+   * - ``include_raw``
+     - ``bool``
+     - ``False``
+     - Attach the untouched API record under ``metadata["raw"]``.
+
+Read Method Parameters
+----------------------
+
+``load``, ``lazy_load``, ``concurrent_load``, ``concurrent_lazy_load``,
+``aload`` and ``alazy_load`` all take these, as do
+``SnowConnection.get_records``, ``concurrent_get_records`` and
+``AsyncSnowConnection.aget_records``:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 12 10 56
+
+   * - Parameter
+     - Type
+     - Default
+     - Description
+   * - ``verify``
+     - ``bool``
+     - ``False``
+     - Count the table before reading it and raise ``SweepIncompleteError`` if the sweep did not return that many distinct records. Costs one extra request on the sequential path and nothing on the threaded and async paths. Holds one key per record, which is why it is opt-in. See :doc:`verification`.
+   * - ``on_error``
+     - ``str``
+     - ``"raise"``
+     - What to do when a page cannot be fetched after its retries are exhausted. ``"raise"`` aborts the sweep. ``"skip"`` logs it at ERROR, leaves a gap and lets the rest finish.
 
 CMDBLoader Extra Parameters
 ---------------------------

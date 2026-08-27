@@ -24,9 +24,17 @@ table on every run.
    updated_docs = loader.load_since(last_sync)
    last_sync = datetime.now(timezone.utc)
 
-Under the hood, ``load_since()`` appends a
-``sys_updated_on>{timestamp}`` filter to the query. It works with all
-six loaders and both framework adapters.
+Under the hood, ``load_since()`` appends a ``sys_updated_on>{timestamp}``
+filter to the query. It works with every loader and both framework adapters.
+
+The column it compares against is the connection's ``since_field``, which
+defaults to ``sys_updated_on`` so that edits to old records are caught. Set
+it to ``sys_created_on`` on an append-only table, or where the update column
+is not indexed:
+
+.. code-block:: python
+
+   conn = SnowConnection(..., since_field="sys_created_on")
 
 CMDB Relationship Traversal
 ----------------------------

@@ -36,7 +36,9 @@ except ImportError as exc:
         "aiohttp is required for the async API. Install it with: pip install snowloader[async]"
     ) from exc
 
-from snowloader.connection import SnowConnectionError
+from snowloader.exceptions import SnowConnectionError
+from snowloader.ordering import DEFAULT_ORDER_BY, OrderBy, normalise_order_by
+from snowloader.sweep import SweepTracker
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,9 @@ _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _MAX_PAGE_SIZE = 10000
 _MIN_PAGE_SIZE = 1
 _DEFAULT_CONCURRENCY = 16
+_ON_ERROR_POLICIES = ("raise", "skip")
+_DEFAULT_SINCE_FIELD = "sys_updated_on"
+_SINCE_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 _INSTANCE_URL_PATTERN = re.compile(r"^https?://[a-zA-Z0-9][-a-zA-Z0-9.]+\.[a-zA-Z]{2,}")
 
@@ -63,15 +68,34 @@ class AsyncSnowConnection:
         client_id: OAuth client ID.
         client_secret: OAuth client secret.
         token: Pre-obtained Bearer token.
-        page_size: Records per API call. Defaults to 500 (vs 100 in sync) since
-            the async path is fast enough that fewer round trips wins.
+        page_size: Records per API call. Defaults to 500, against 100 on the
+            sync class, because keep-alive is off by default here and every
+            request pays a fresh handshake. Measured on a 2,919 row table at
+            concurrency 16, page_size 500 came back in roughly half the time
+            page_size 100 did. Raising concurrency did not close that gap,
+            which is the tell: the async path is bound by per-request cost
+            rather than by how many requests are in flight.
         timeout: HTTP request timeout in seconds. Defaults to 120.
         max_retries: Retry attempts for transient failures.
         retry_backoff: Base delay between retries (seconds).
         display_value: Controls ``sysparm_display_value``. Defaults to ``"true"``.
+        order_by: Column, or list of columns, every paginated read sorts by.
+            Defaults to ``"sys_created_on"`` with ``sys_id`` appended as a
+            tiebreak. See :class:`snowloader.SnowConnection` for the detail.
+        since_field: Column a delta sync compares its cutoff against.
+            Defaults to ``"sys_updated_on"``.
         proxy: Optional proxy URL.
         verify_ssl: SSL verification. Defaults to True.
         concurrency: Maximum number of concurrent page fetches. Defaults to 16.
+        keep_alive: Reuse TCP connections between requests. Defaults to
+            False, which makes every request pay a fresh handshake. That is
+            deliberate: some ServiceNow front ends, and shared WAF layers in
+            front of them, return empty response bodies on reused
+            connections under concurrent load, which corrupts a paginated
+            read silently. It is also not reliably faster: measured on a
+            2,919 row table at concurrency 16 it came out slightly slower
+            than leaving it off, so treat it as something to measure rather
+            than a free win.
 
     Raises:
         SnowConnectionError: If credentials or URL are invalid.
@@ -101,9 +125,12 @@ class AsyncSnowConnection:
         max_retries: int = _DEFAULT_MAX_RETRIES,
         retry_backoff: float = _DEFAULT_RETRY_BACKOFF,
         display_value: str = "true",
+        order_by: OrderBy = DEFAULT_ORDER_BY,
+        since_field: str = _DEFAULT_SINCE_FIELD,
         proxy: str | None = None,
         verify_ssl: bool = True,
         concurrency: int = _DEFAULT_CONCURRENCY,
+        keep_alive: bool = False,
     ) -> None:
         if not instance_url or not instance_url.strip():
             raise SnowConnectionError(
@@ -137,13 +164,23 @@ class AsyncSnowConnection:
                 f"concurrency must be >= 1, got {concurrency}.",
             )
 
+        if not since_field or not since_field.strip():
+            raise SnowConnectionError(
+                "since_field must name a column.",
+                detail="Use 'sys_updated_on' for changes or 'sys_created_on' for new records.",
+            )
+
         self.instance_url = cleaned_url
         self.page_size = page_size
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.display_value = display_value
+        self.order_by = order_by
+        self.since_field = since_field.strip()
         self.concurrency = concurrency
+        self.keep_alive = keep_alive
+        self._order_clauses = normalise_order_by(order_by)
         self._proxy = proxy
         self._verify_ssl = verify_ssl
         self._session: aiohttp.ClientSession | None = None
@@ -217,11 +254,12 @@ class AsyncSnowConnection:
             # which corrupts paginated reads. Trading a small amount of
             # connection-setup overhead for correctness is the right call
             # for a data-extraction SDK where missing pages are unacceptable.
+            # keep_alive=True hands that trade back to the caller.
             connector = aiohttp.TCPConnector(
                 limit=self.concurrency * 2,
                 limit_per_host=self.concurrency,
                 ssl=self._verify_ssl,
-                force_close=True,
+                force_close=not self.keep_alive,
             )
             timeout_cfg = aiohttp.ClientTimeout(total=self.timeout)
             auth = None
@@ -311,13 +349,38 @@ class AsyncSnowConnection:
         if query:
             query_parts.append(query)
         if since:
-            timestamp = since.strftime("%Y-%m-%d %H:%M:%S")
-            query_parts.append(f"sys_updated_on>{timestamp}")
-        query_parts.append("ORDERBYsys_created_on")
-        params["sysparm_query"] = "^".join(query_parts)
+            timestamp = since.strftime(_SINCE_TIMESTAMP_FORMAT)
+            query_parts.append(f"{self.since_field}>{timestamp}")
+        query_parts.extend(self._order_clauses)
+        if query_parts:
+            params["sysparm_query"] = "^".join(query_parts)
         if fields:
             params["sysparm_fields"] = ",".join(fields)
         return params
+
+    @staticmethod
+    def _check_on_error(on_error: str) -> None:
+        """Reject an unknown partial-failure policy before any request runs."""
+        if on_error not in _ON_ERROR_POLICIES:
+            raise SnowConnectionError(
+                f"on_error must be one of {_ON_ERROR_POLICIES}, got '{on_error}'.",
+                detail=(
+                    "'raise' aborts the sweep on the first unrecoverable page. "
+                    "'skip' leaves a gap and carries on."
+                ),
+            )
+
+    @staticmethod
+    def _check_verifiable(fields: list[str] | None) -> None:
+        """Refuse to verify a sweep whose primary key was projected away."""
+        if fields and "sys_id" not in fields:
+            raise SnowConnectionError(
+                "verify=True needs 'sys_id' in the requested fields.",
+                detail=(
+                    "Sweep verification counts distinct sys_id values. Add "
+                    "'sys_id' to fields, or drop verify."
+                ),
+            )
 
     async def _request(
         self,
@@ -478,8 +541,8 @@ class AsyncSnowConnection:
         if query:
             query_parts.append(query)
         if since:
-            timestamp = since.strftime("%Y-%m-%d %H:%M:%S")
-            query_parts.append(f"sys_updated_on>{timestamp}")
+            timestamp = since.strftime(_SINCE_TIMESTAMP_FORMAT)
+            query_parts.append(f"{self.since_field}>{timestamp}")
         if query_parts:
             params["sysparm_query"] = "^".join(query_parts)
 
@@ -498,25 +561,50 @@ class AsyncSnowConnection:
         query: str | None = None,
         fields: list[str] | None = None,
         since: datetime | None = None,
+        verify: bool = False,
+        on_error: str = "raise",
+        concurrency: int | None = None,
     ) -> AsyncIterator[dict[str, object]]:
         """Stream records from a table with concurrent pagination.
 
         Pre-fetches the total count to plan how many pages to dispatch.
         Up to ``concurrency`` pages are fetched in parallel and yielded in
-        completion order (NOT sys_created_on order). For ordered output,
-        sort the results client-side after collecting them.
+        completion order, NOT in the order the ORDERBY chain requested. For
+        ordered output, sort the results client-side after collecting them.
 
         Args:
             table: ServiceNow table name.
-            query: Encoded query string. ``ORDERBYsys_created_on`` is appended.
+            query: Encoded query string. The connection's ORDERBY chain is
+                appended.
             fields: List of field names to request, or None for all.
             since: Delta sync cutoff.
+            verify: When True, raise if the sweep did not return as many
+                distinct records as the count already fetched to plan the
+                pages. Costs nothing extra beyond memory for the keys.
+            on_error: ``"raise"`` (default) aborts the sweep when a page
+                cannot be fetched. ``"skip"`` logs the page, leaves a gap and
+                lets the rest finish.
+            concurrency: Override the connection's concurrency for this call.
 
         Yields:
             One record dict at a time.
+
+        Raises:
+            SnowConnectionError: On count failure, any unrecoverable page
+                error, or an unknown ``on_error`` policy.
+            SweepIncompleteError: If ``verify`` is set and records went
+                missing or arrived twice.
         """
         if not table or not table.strip():
             raise SnowConnectionError("table name must not be empty.")
+
+        self._check_on_error(on_error)
+        if verify:
+            self._check_verifiable(fields)
+
+        workers = self.concurrency if concurrency is None else concurrency
+        if workers < 1:
+            raise SnowConnectionError(f"concurrency must be >= 1, got {workers}.")
 
         # Build full query (including since) for both count and pagination
         params = self._build_query_params(query=query, fields=fields, since=since)
@@ -534,27 +622,106 @@ class AsyncSnowConnection:
             table,
             total,
             page_count,
-            self.concurrency,
+            workers,
         )
 
-        sem = asyncio.Semaphore(self.concurrency)
+        tracker: SweepTracker | None = None
+        if verify:
+            tracker = SweepTracker(table=table, query=full_query, expected=total)
 
-        async def fetch_page(offset: int) -> list[dict[str, object]]:
+        sem = asyncio.Semaphore(workers)
+
+        async def fetch_page(offset: int) -> list[dict[str, object]] | None:
+            """Fetch one page, or return None when it was skipped."""
             async with sem:
                 page_params = dict(params)
                 page_params["sysparm_offset"] = str(offset)
                 url = f"{self.instance_url}/api/now/table/{table}"
-                data = await self._request("GET", url, params=page_params)
+                try:
+                    data = await self._request("GET", url, params=page_params)
+                except SnowConnectionError as exc:
+                    if on_error != "skip":
+                        raise
+                    logger.error(
+                        "Skipping page at offset %d of '%s' after an unrecoverable error: %s",
+                        offset,
+                        table,
+                        exc,
+                    )
+                    return None
                 raw = data.get("result") if isinstance(data, dict) else None
                 if raw is None or not isinstance(raw, list):
                     return []
                 return cast(list[dict[str, object]], raw)
 
         tasks = [asyncio.create_task(fetch_page(i * self.page_size)) for i in range(page_count)]
-        for fut in asyncio.as_completed(tasks):
-            records = await fut
-            for rec in records:
-                yield rec
+        try:
+            for fut in asyncio.as_completed(tasks):
+                records = await fut
+                if records is None:
+                    if tracker:
+                        tracker.page_failed()
+                    continue
+                if tracker:
+                    for record in records:
+                        tracker.observe(record)
+                for rec in records:
+                    yield rec
+        finally:
+            # A consumer that stops early, or a page that raised, leaves the
+            # remaining tasks pending. Cancel them rather than leaking them
+            # into whatever the caller does next, and read the results of the
+            # ones that already finished so a page that failed after the
+            # sweep aborted does not resurface as an unretrieved exception.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+                elif not task.cancelled():
+                    task.exception()
+
+        if tracker:
+            tracker.check()
+
+    def aconcurrent_get_records(
+        self,
+        table: str,
+        query: str | None = None,
+        fields: list[str] | None = None,
+        since: datetime | None = None,
+        verify: bool = False,
+        on_error: str = "raise",
+        max_workers: int | None = None,
+    ) -> AsyncIterator[dict[str, object]]:
+        """Concurrent paginated read, named to match the sync API.
+
+        :meth:`aget_records` already fetches pages concurrently, so this is
+        the same method under the name someone coming from
+        :meth:`snowloader.SnowConnection.concurrent_get_records` will look
+        for. It exists so that reaching for the obvious name works rather
+        than raising AttributeError.
+
+        Args:
+            table: ServiceNow table name.
+            query: Encoded query string.
+            fields: List of field names to request, or None for all.
+            since: Delta sync cutoff.
+            verify: Raise if the sweep did not return every record.
+            on_error: ``"raise"`` or ``"skip"``.
+            max_workers: Override the connection's concurrency, named to
+                match the sync signature.
+
+        Returns:
+            The same async iterator :meth:`aget_records` returns.
+        """
+        return self.aget_records(
+            table,
+            query=query,
+            fields=fields,
+            since=since,
+            verify=verify,
+            on_error=on_error,
+            concurrency=max_workers,
+        )
 
     async def aget_record(self, table: str, sys_id: str) -> dict[str, object]:
         """Fetch a single record by sys_id."""

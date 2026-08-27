@@ -110,7 +110,7 @@ class ProblemLoader(BaseSnowLoader):
 
         page_content = "\n".join(lines)
 
-        sys_id = str(record.get("sys_id", ""))
+        sys_id = _raw_value(record.get("sys_id"))
         if self._include_journals and sys_id:
             journals = self._fetch_journals(sys_id)
             journal_text = self._format_journals(journals)
@@ -134,4 +134,7 @@ class ProblemLoader(BaseSnowLoader):
             "sys_updated_on": _display_value(record.get("sys_updated_on")),
         }
 
-        return SnowDocument(page_content=page_content, metadata=metadata)
+        return SnowDocument(
+            page_content=page_content,
+            metadata=self._build_metadata(record, metadata),
+        )

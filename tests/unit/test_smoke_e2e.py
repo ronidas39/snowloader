@@ -312,7 +312,18 @@ def test_incident_empty_fields_omitted() -> None:
 
 @responses.activate
 def test_incident_metadata_includes_raw_values() -> None:
-    """Metadata should store raw sys_id values for reference fields."""
+    """Metadata carries both halves of every reference field.
+
+    Until 0.3.0 ``cmdb_ci`` held a bare sys_id while its sibling references
+    held labels, so one dict mixed two conventions and no field had both. The
+    label now lives under the field's own name and the other half beside it.
+
+    The companion key is named for what it holds: ``_sys_id`` when the value
+    identifies another record, ``_value`` otherwise. The ids in this module's
+    fixtures are readable stand-ins rather than the 32 hex characters a real
+    sys_id has, so they land on ``_value`` here. See
+    ``test_loader_metadata.py`` for the same contract against realistic ids.
+    """
     responses.add(responses.GET, f"{TABLE_API}/incident", json={"result": [INCIDENTS[0]]})
 
     docs = IncidentLoader(connection=_conn()).load()
@@ -321,7 +332,8 @@ def test_incident_metadata_includes_raw_values() -> None:
     assert meta["sys_id"] == "inc1"
     assert meta["table"] == "incident"
     assert meta["number"] == "INC0010001"
-    assert meta["cmdb_ci"] == "ci-mail"  # raw value, not display
+    assert meta["cmdb_ci"] == "mail-prod-01"
+    assert meta["cmdb_ci_value"] == "ci-mail"
     assert meta["source"].startswith("servicenow://incident/")
 
 

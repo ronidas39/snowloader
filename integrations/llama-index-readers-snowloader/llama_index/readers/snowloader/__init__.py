@@ -1,7 +1,8 @@
 """ServiceNow data readers for LlamaIndex, powered by snowloader.
 
-Provides six readers covering the core ServiceNow tables, each producing
-LlamaIndex Documents ready for indexing in any vector store.
+Provides a reader for each of the core ServiceNow tables plus a generic one
+for everything else, each producing LlamaIndex Documents ready for indexing in
+any vector store.
 """
 
 from llama_index.readers.snowloader.base import (
@@ -12,6 +13,8 @@ from llama_index.readers.snowloader.base import (
     ServiceNowIncidentReader,
     ServiceNowKBReader,
     ServiceNowProblemReader,
+    ServiceNowRelationshipReader,
+    ServiceNowTableReader,
 )
 
 # Async variants are re-exported when aiohttp is installed alongside snowloader.
@@ -46,5 +49,7 @@ __all__ = [
     "ServiceNowChangeReader",
     "ServiceNowProblemReader",
     "ServiceNowCatalogReader",
+    "ServiceNowRelationshipReader",
+    "ServiceNowTableReader",
     *_ASYNC_EXPORTS,
 ]

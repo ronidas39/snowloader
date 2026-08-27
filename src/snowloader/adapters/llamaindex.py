@@ -34,6 +34,8 @@ from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 from snowloader.loaders.problems import ProblemLoader
+from snowloader.loaders.relationships import RelationshipLoader
+from snowloader.loaders.table import TableLoader
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
@@ -88,8 +90,22 @@ class _LlamaIndexAdapter(BaseReader):
         return Document(
             text=snow_doc.page_content,
             metadata=snow_doc.metadata,
-            excluded_llm_metadata_keys=self._excluded_keys,
+            excluded_llm_metadata_keys=self._excluded_for(snow_doc),
         )
+
+    def _excluded_for(self, snow_doc: SnowDocument) -> list[str]:
+        """Keys to keep out of the text the LLM sees.
+
+        Identifier companions exist so a document can be joined back to the
+        records it references. A model reading them learns nothing and pays
+        for every one, so they are excluded alongside whatever the caller
+        named.
+        """
+        excluded = list(self._excluded_keys)
+        excluded.extend(
+            key for key in snow_doc.metadata if key.endswith("_sys_id") and key not in excluded
+        )
+        return excluded
 
 
 class ServiceNowIncidentReader(_LlamaIndexAdapter):
@@ -126,6 +142,26 @@ class ServiceNowCatalogReader(_LlamaIndexAdapter):
     """LlamaIndex reader for ServiceNow service catalog items."""
 
     _loader_class = CatalogLoader
+
+
+class ServiceNowRelationshipReader(_LlamaIndexAdapter):
+    """LlamaIndex reader for ServiceNow CI relationships.
+
+    One Document per ``cmdb_rel_ci`` edge, with both endpoints available as
+    sys_ids in metadata.
+    """
+
+    _loader_class = RelationshipLoader
+
+
+class ServiceNowTableReader(_LlamaIndexAdapter):
+    """LlamaIndex reader for any ServiceNow table.
+
+    Pass ``table`` on the constructor, and optionally ``content_fields`` to
+    say which columns make up the document text.
+    """
+
+    _loader_class = TableLoader
 
 
 class ServiceNowAttachmentReader(_LlamaIndexAdapter):

@@ -2,6 +2,157 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-08-27
+
+This release fixes a data loss bug. If you are on 0.2.x and you sweep a table
+whose `sys_created_on` has repeated values, some of your records are missing
+and nothing told you. Upgrade.
+
+### Fixed
+
+- **Pagination no longer loses records.** Every paginated request now ends its
+  ORDERBY chain with `sys_id`. ServiceNow offset pagination is only safe over a
+  unique sort key: the API does not guarantee a stable order inside a group of
+  rows that tie on the sort column, so a page boundary landing inside a tied
+  group returns some rows twice and skips others. Every release before this one
+  sorted on `sys_created_on`, which is not unique.
+
+  Measured on a developer instance: `cmdb_ci` holds 2,919 rows across only 818
+  distinct `sys_created_on` values, worst tie 31 rows. Three consecutive sweeps
+  each returned exactly 2,919 rows, matching the count the instance reported,
+  but only 2,915 distinct. Four records replaced by four duplicates, the same
+  four every run. The count reconciles so nothing reports a problem, and the
+  loss is deterministic so re-running never surfaces it and diffing two runs
+  shows nothing. On a 30,000 row CMDB that rate is roughly 40 missing CIs.
+
+  With the fix, the same table returns all 2,919 distinct rows on both the
+  sequential and the threaded path. Confirmed on the same instance in the same
+  session, along with the fact that ServiceNow honours
+  `ORDERBYsys_created_on^ORDERBYsys_id` as a genuine two column sort: across
+  2,101 adjacent pairs sharing a timestamp, `sys_id` ascended inside every one.
+
+  Applies to `SnowConnection`, `AsyncSnowConnection`, the threaded paginator
+  and every loader. No code change needed to get it.
+
+- **`sys_id` is a plain string in every display value mode.** With
+  `display_value="all"` the loaders put the string form of a dict in metadata,
+  so the primary key read as `"{'display_value': '02a73898...', 'value':
+  '02a73898...'}"`.
+
+### Added
+
+- **`verify=True` on every read path.** Counts the table before the sweep and
+  raises `SweepIncompleteError` if the sweep did not return that many distinct
+  records. Available on `get_records`, `concurrent_get_records`, `aget_records`,
+  and on `load`, `lazy_load`, `concurrent_load`, `concurrent_lazy_load`,
+  `aload` and `alazy_load`. Costs one extra request on the sequential path and
+  nothing on the threaded and async paths, which already fetch that count to
+  plan their pages. Off by default, because it holds one key per record.
+
+- **`SweepReport` and `SweepIncompleteError`.** The report carries `expected`,
+  `returned`, `distinct`, `missing`, `duplicates`, `failed_pages` and
+  `complete`, and is attached to the exception. `SweepIncompleteError`
+  subclasses `SnowConnectionError`, so existing handlers keep catching it.
+
+- **Reference fields carry both halves.** Metadata now holds the readable
+  label under a field's own name and the identifier beside it:
+  `assignment_group` and `assignment_group_sys_id`, `caller_id` and
+  `caller_id_sys_id`. The suffix names what it holds: `_sys_id` when the value
+  identifies another record, `_value` when it does not, so anything under a
+  `_sys_id` key can be joined on. Fields whose halves are identical get no
+  companion.
+
+- **Field helpers are public.** `display_value`, `raw_value`, `reference`,
+  `ReferenceField`, `is_sys_id`, `parse_boolean` and `expand_reference_keys`
+  are exported from the package root. Every consumer was writing these by hand.
+
+- **`order_by` on both connections.** Takes a column name, a list of columns,
+  or a ready-made clause such as `"ORDERBYDESCsys_created_on"`. `sys_id` is
+  appended as a tiebreak unless the chain already sorts on it. `None` turns
+  ordering off. An empty string or empty list is refused rather than treated as
+  an opt-out.
+
+- **`on_error="skip"`.** An unrecoverable page logs at ERROR, leaves a gap and
+  lets the sweep finish, rather than aborting it. Retries still happen first, so
+  a page only counts as failed once `max_retries` is exhausted. Compose it with
+  `verify=True` for an unattended run: it completes, then raises with a report
+  saying exactly how much was lost. Default stays `"raise"`.
+
+- **`TableLoader`.** A generic loader for any ServiceNow table. Content fields
+  can be given explicitly or picked per record from the usual text columns.
+  Metadata gets the same reference expansion as every other loader.
+
+- **`RelationshipLoader`.** Sweeps `cmdb_rel_ci` directly and returns one
+  document per edge, with `parent_sys_id`, `child_sys_id` and `type_sys_id`
+  populated. `CMDBLoader(include_relationships=True)` costs two extra requests
+  per CI, which measured at 2.4 seconds per CI on a developer instance and
+  projects to about 34 hours for a 50,000 CI estate. Sweeping the whole
+  relationship table on the same instance took 7 seconds.
+
+- **`aconcurrent_get_records`.** `aget_records` already fetched pages
+  concurrently, so this is the same method under the name someone coming from
+  the sync API looks for. It used to raise `AttributeError`.
+
+- **`since_field` on both connections.** The column a delta sync compares its
+  cutoff against. Defaults to `sys_updated_on`. Set it to `sys_created_on` on an
+  append-only table, or where the update column is not indexed.
+
+- **`expand_references` and `include_raw` on every loader.**
+  `expand_references=False` restores the curated-only metadata from 0.2.x.
+  `include_raw=True` attaches the untouched API record under `"raw"`.
+
+- **`keep_alive` on `AsyncSnowConnection`.** `force_close=True` has been the
+  default since 0.2.3, because some ServiceNow front ends return empty response
+  bodies on reused connections under concurrent load, which corrupts a
+  paginated read silently. It stays the default. `keep_alive=True` hands that
+  trade back to callers who have measured their own instance. Worth saying that
+  it did not measure faster here: across two runs it came out slightly slower
+  than leaving it off, so it is something to test rather than a free win.
+
+### Changed
+
+- **Breaking: `cmdb_ci` in incident metadata now holds the label.** It held a
+  bare sys_id while every sibling reference held a label, so one dict mixed two
+  conventions and no field had both. The identifier moved to `cmdb_ci_sys_id`.
+
+- **Breaking: loader metadata is fuller.** Every field on the record reaches
+  metadata now, not just the dozen or so each loader curated. `caller_id` and
+  `opened_by` were absent from incident metadata entirely. On a wide table
+  that is roughly three times the previous metadata size, which is worth
+  checking if you write the whole dict into a vector store with a per-vector
+  limit. Pass `expand_references=False` for the old shape.
+
+- LlamaIndex readers now exclude every `*_sys_id` companion from
+  `excluded_llm_metadata_keys` alongside `sys_id`. Reference expansion puts an
+  identifier beside every reference, and a model reading a 32 character sys_id
+  learns nothing while paying for all of it. They stay in `metadata`, where
+  they are useful.
+
+- `SnowConnectionError` moved to `snowloader.exceptions` so the sync and async
+  connections can share it. It is still importable from `snowloader` and from
+  `snowloader.connection`; nothing needs changing.
+
+### Documentation
+
+- New page, `docs/verification.rst`: what the ordering bug was, the numbers it
+  was measured with, how `order_by` works, and a checklist for an unattended
+  run.
+- New page, `docs/references.rst`: the three shapes a field arrives in, what
+  metadata holds, the public helpers, and the `sys_class_name` trap that files
+  a MySQL instance under a label no table is called.
+- Concurrency and page size guidance on both paths replaced with measured
+  tables from `scripts/benchmark_v030.py`. Threaded throughput peaks at 16
+  workers and a page size in the low hundreds; the async path wants larger
+  pages instead. The two paths pull in opposite directions, so the docs now
+  say not to carry a page size from one to the other.
+- `docs/async.rst` states plainly that async is not the fastest path. It beat
+  the sequential sweep by about five times and the threaded paginator beat it
+  again. Async is for staying inside an event loop, not for throughput.
+- Note in `docs/async.rst` on `SSLCertVerificationError` from aiohttp on
+  macOS, which is a missing CA bundle in the Python install rather than
+  anything to do with this library.
+- README, index and roadmap updated for the release.
+
 ## [0.2.8] - 2026-04-28
 
 ### Documentation

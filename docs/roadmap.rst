@@ -1,8 +1,49 @@
 Roadmap
 =======
 
-snowloader is under active development. Here is what is planned for
-upcoming releases.
+snowloader is under active development. Here is what has shipped and what
+is planned.
+
+v0.3 - Correctness (Shipped 2026-08-27)
+----------------------------------------
+
+Driven by a field report from a real graph build rather than by guesswork.
+See :doc:`verification` and :doc:`references` for usage details.
+
+**The data loss fix**
+
+Every paginated request now ends its ORDERBY chain with ``sys_id``.
+ServiceNow offset pagination is only safe over a unique sort key, and
+``sys_created_on`` is not one. Measured on a developer instance, three
+consecutive sweeps of ``cmdb_ci`` each returned 2,919 rows matching the
+count the instance reported, but only 2,915 distinct: four records replaced
+by four duplicates, the same four every run.
+
+**Sweeps you can trust**
+
+- ``verify=True`` on every read path, sync and async, connection and loader
+- ``SweepReport`` and ``SweepIncompleteError`` carrying every count that
+  went into the decision
+- ``on_error="skip"`` so an unattended run finishes past a dead page and
+  then says what it lost
+
+**Reference fields**
+
+- Both halves of every field in metadata: the label under its own name, the
+  identifier under a ``_sys_id`` companion
+- ``sys_id`` is a plain string in every display value mode
+- Public field helpers: ``reference``, ``display_value``, ``raw_value``,
+  ``is_sys_id``, ``expand_reference_keys``
+
+**New surface**
+
+- ``TableLoader`` for any table with no dedicated loader
+- ``RelationshipLoader`` sweeping ``cmdb_rel_ci`` for the whole CI graph in
+  one read
+- ``aconcurrent_get_records``, ``order_by``, ``since_field``,
+  ``expand_references``, ``include_raw``, ``keep_alive``
+- measured concurrency and page size guidance for both paths, replacing
+  the guesses that were there before
 
 v0.2 - Async, Attachments, Threaded Sync (Shipped 2026-04-28)
 --------------------------------------------------------------
@@ -35,19 +76,35 @@ patches driven by real-world extractions. See :doc:`async`,
   SDK retries up to ``max_retries`` and raises ``SnowConnectionError``
   if the issue persists, instead of silently dropping pages
 
-v0.3 - Vector Store Streaming & Checkpointing
-----------------------------------------------
+v0.4 - Very Large Extractions
+-----------------------------
 
-**Direct vector store streaming**
+**Keyset pagination**
 
-Write documents directly to Pinecone, Weaviate, Chroma, or Qdrant
-without holding everything in memory. Useful for loading millions of
-records.
+Offset pagination gets slower the deeper it goes, because the instance
+still has to walk past every skipped row. Paging on ``sys_id >
+last_seen`` instead keeps the cost per page flat. The ordering fix in
+0.3.0 is the prerequisite for it.
 
 **Checkpoint and resume**
 
 For large loads (100k+ records), save progress to disk so that a crash
 at record 50k does not require starting from the beginning.
+
+**Direct vector store streaming**
+
+Write documents directly to Pinecone, Weaviate, Chroma, or Qdrant
+without holding everything in memory.
+
+Not planned: write support
+--------------------------
+
+A read-only guarantee is the reason somebody points this at production
+without raising a change. A read library that starts writing has to grow
+opinions about Data Policies, choice lists and business rules, or it becomes
+a polite way to corrupt a CMDB. If it ever happens it will be a sibling
+package sharing connection, auth and retry, so that "snowloader does not
+write" stays true of the thing people install by default.
 
 v1.0 - Custom Field Mapping
 ----------------------------

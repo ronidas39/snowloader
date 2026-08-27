@@ -17,6 +17,7 @@ import logging
 from typing import Any
 
 from snowloader.loaders._field_utils import display_value as _display_value
+from snowloader.loaders._field_utils import raw_value as _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 from snowloader.utils.html_cleaner import clean_html
 
@@ -84,7 +85,7 @@ class KnowledgeBaseLoader(BaseSnowLoader):
 
         page_content = "\n".join(lines)
 
-        sys_id = str(record.get("sys_id", ""))
+        sys_id = _raw_value(record.get("sys_id"))
         metadata: dict[str, Any] = {
             "sys_id": sys_id,
             "number": number,
@@ -100,4 +101,7 @@ class KnowledgeBaseLoader(BaseSnowLoader):
             "sys_updated_on": _display_value(record.get("sys_updated_on")),
         }
 
-        return SnowDocument(page_content=page_content, metadata=metadata)
+        return SnowDocument(
+            page_content=page_content,
+            metadata=self._build_metadata(record, metadata),
+        )

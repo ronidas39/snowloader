@@ -15,6 +15,7 @@ from typing import Any
 
 from snowloader.loaders._field_utils import display_value as _display_value
 from snowloader.loaders._field_utils import parse_boolean
+from snowloader.loaders._field_utils import raw_value as _raw_value
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
@@ -77,7 +78,7 @@ class CatalogLoader(BaseSnowLoader):
 
         page_content = "\n".join(lines)
 
-        sys_id = str(record.get("sys_id", ""))
+        sys_id = _raw_value(record.get("sys_id"))
         metadata: dict[str, Any] = {
             "sys_id": sys_id,
             "name": name,
@@ -91,4 +92,7 @@ class CatalogLoader(BaseSnowLoader):
             "sys_updated_on": _display_value(record.get("sys_updated_on")),
         }
 
-        return SnowDocument(page_content=page_content, metadata=metadata)
+        return SnowDocument(
+            page_content=page_content,
+            metadata=self._build_metadata(record, metadata),
+        )

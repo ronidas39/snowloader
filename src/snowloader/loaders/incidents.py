@@ -128,7 +128,7 @@ class IncidentLoader(BaseSnowLoader):
         page_content = "\n".join(lines)
 
         # Append journal entries if requested
-        sys_id = str(record.get("sys_id", ""))
+        sys_id = _raw_value(record.get("sys_id"))
         if self._include_journals and sys_id:
             journals = self._fetch_journals(sys_id)
             journal_text = self._format_journals(journals)
@@ -147,7 +147,7 @@ class IncidentLoader(BaseSnowLoader):
             "category": category,
             "assigned_to": assigned_to,
             "assignment_group": assignment_group,
-            "cmdb_ci": _raw_value(record.get("cmdb_ci")),
+            "cmdb_ci": cmdb_ci,
             "opened_at": opened_at,
             "resolved_at": resolved_at,
             "closed_at": closed_at,
@@ -155,4 +155,7 @@ class IncidentLoader(BaseSnowLoader):
             "sys_updated_on": _display_value(record.get("sys_updated_on")),
         }
 
-        return SnowDocument(page_content=page_content, metadata=metadata)
+        return SnowDocument(
+            page_content=page_content,
+            metadata=self._build_metadata(record, metadata),
+        )

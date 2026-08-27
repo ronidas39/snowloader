@@ -38,10 +38,17 @@ retry logic, and memory-efficient streaming.
 
 Key features:
 
-- **7 loaders** for core ServiceNow tables (including a dedicated attachment loader)
+- **Deterministic pagination** - every sweep sorts on a unique key, so offset
+  paging cannot silently lose rows to a tied timestamp
+- **Verifiable sweeps** - ``verify=True`` raises instead of quietly returning
+  an incomplete extract
+- **9 loaders** for core ServiceNow tables, plus a generic ``TableLoader`` for
+  everything else and a ``RelationshipLoader`` for the CMDB graph
+- **Reference fields with both halves** - the readable label and the sys_id
+  you join on, on every field
 - **Async support** via aiohttp for concurrent paginated fetches
 - **CMDB relationship traversal** with concurrent graph walking
-- **Delta sync** - only fetch records updated since your last sync
+- **Delta sync** - only fetch records changed since your last sync
 - **4 authentication modes** - Basic, OAuth Password, OAuth Client Credentials, Bearer Token
 - **LangChain & LlamaIndex adapters** (sync + async) with zero business logic
 - **Production-grade** - retry with backoff, rate limiting, thread safety, proxy support
@@ -56,6 +63,8 @@ Created by **Roni Das** · `GitHub <https://github.com/ronidas39>`_ · `PyPI <ht
    getting-started
    authentication
    loaders
+   verification
+   references
    attachments
    concurrent
    async

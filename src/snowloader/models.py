@@ -28,6 +28,7 @@ from datetime import datetime
 from typing import Any
 
 from snowloader.connection import SnowConnection, SnowConnectionError
+from snowloader.fields import display_value, expand_reference_keys, raw_value
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,16 @@ class BaseSnowLoader:
             When left as None, the API returns all fields on the table.
         include_journals: Whether to fetch and append work notes and
             comments from sys_journal_field for each record.
+        expand_references: When True (the default), every field on the
+            record reaches metadata, and any field whose two halves differ
+            gains a companion key: ``assignment_group`` holds the label and
+            ``assignment_group_sys_id`` holds the identifier you can join
+            on. Set it False to get only the fields the loader curates,
+            which is the behaviour before 0.3.0.
+        include_raw: When True, the untouched API record is attached to
+            metadata under ``"raw"``. Useful when something downstream needs
+            a field the loader does not surface, at the cost of holding two
+            copies of every record.
 
     Example:
         class IncidentLoader(BaseSnowLoader):
@@ -95,25 +106,44 @@ class BaseSnowLoader:
         query: str | None = None,
         fields: list[str] | None = None,
         include_journals: bool = False,
+        expand_references: bool = True,
+        include_raw: bool = False,
     ) -> None:
         self._connection = connection
         self._query = query
         self._fields = fields
         self._include_journals = include_journals
+        self._expand_references = expand_references
+        self._include_raw = include_raw
 
-    def load(self) -> list[SnowDocument]:
+    def load(self, verify: bool = False, on_error: str = "raise") -> list[SnowDocument]:
         """Fetch all matching records and return them as a list.
 
         This is the simple, non-streaming interface. Under the hood it
         just drains lazy_load() into a list. For large tables, prefer
         lazy_load() directly to avoid holding everything in memory.
 
+        Args:
+            verify: Raise if the sweep did not return every record the
+                instance reports. See
+                :meth:`snowloader.SnowConnection.get_records`.
+            on_error: ``"raise"`` (default) or ``"skip"``.
+
         Returns:
             List of SnowDocument instances, one per record.
-        """
-        return list(self.lazy_load())
 
-    def lazy_load(self, since: datetime | None = None) -> Generator[SnowDocument, None, None]:
+        Raises:
+            SweepIncompleteError: If ``verify`` is set and the sweep came up
+                short.
+        """
+        return list(self.lazy_load(verify=verify, on_error=on_error))
+
+    def lazy_load(
+        self,
+        since: datetime | None = None,
+        verify: bool = False,
+        on_error: str = "raise",
+    ) -> Generator[SnowDocument, None, None]:
         """Fetch records and yield them one at a time as SnowDocuments.
 
         This is the primary loading interface. It streams records through
@@ -123,16 +153,25 @@ class BaseSnowLoader:
 
         Args:
             since: Optional cutoff datetime for delta sync. When set,
-                only records updated after this point are fetched.
+                only records changed after this point are fetched.
+            verify: Raise if the sweep did not return every record the
+                instance reports.
+            on_error: ``"raise"`` (default) or ``"skip"``.
 
         Yields:
             SnowDocument instances, one per ServiceNow record.
+
+        Raises:
+            SweepIncompleteError: If ``verify`` is set and the sweep came up
+                short.
         """
         records = self._connection.get_records(
             table=self.table,
             query=self._query,
             fields=self._fields,
             since=since,
+            verify=verify,
+            on_error=on_error,
         )
 
         for record in records:
@@ -159,6 +198,8 @@ class BaseSnowLoader:
         self,
         since: datetime | None = None,
         max_workers: int = 16,
+        verify: bool = False,
+        on_error: str = "raise",
     ) -> Generator[SnowDocument, None, None]:
         """Fetch records in parallel and yield them as SnowDocuments.
 
@@ -176,12 +217,21 @@ class BaseSnowLoader:
             since: Optional cutoff datetime for delta sync. When set,
                 only records updated after this point are fetched.
             max_workers: Number of worker threads to use for page fetches.
-                Defaults to 16. Higher values speed up large tables but
-                may trip ServiceNow rate limits on smaller instances.
+                Defaults to 16, which is where measured throughput flattens.
+                Higher values speed up large tables but may trip ServiceNow
+                rate limits on smaller instances.
+            verify: Raise if the sweep did not return every record the
+                instance reports. Free on this path, because the count it
+                checks against was already fetched to plan the pages.
+            on_error: ``"raise"`` (default) or ``"skip"``.
 
         Yields:
             SnowDocument instances, one per ServiceNow record, in the
             order their pages complete (not sys_created_on order).
+
+        Raises:
+            SweepIncompleteError: If ``verify`` is set and the sweep came up
+                short.
         """
         records = self._connection.concurrent_get_records(
             table=self.table,
@@ -189,12 +239,19 @@ class BaseSnowLoader:
             fields=self._fields,
             since=since,
             max_workers=max_workers,
+            verify=verify,
+            on_error=on_error,
         )
 
         for record in records:
             yield self._record_to_document(record)
 
-    def concurrent_load(self, max_workers: int = 16) -> list[SnowDocument]:
+    def concurrent_load(
+        self,
+        max_workers: int = 16,
+        verify: bool = False,
+        on_error: str = "raise",
+    ) -> list[SnowDocument]:
         """Fetch all matching records in parallel and return them as a list.
 
         Threaded counterpart to load(). Drains concurrent_lazy_load() into
@@ -205,19 +262,34 @@ class BaseSnowLoader:
         Args:
             max_workers: Number of worker threads to use for page fetches.
                 Defaults to 16.
+            verify: Raise if the sweep did not return every record.
+            on_error: ``"raise"`` (default) or ``"skip"``.
 
         Returns:
             List of SnowDocument instances, one per record, in the order
             their pages completed.
+
+        Raises:
+            SweepIncompleteError: If ``verify`` is set and the sweep came up
+                short.
         """
-        return list(self.concurrent_lazy_load(max_workers=max_workers))
+        return list(
+            self.concurrent_lazy_load(
+                max_workers=max_workers,
+                verify=verify,
+                on_error=on_error,
+            )
+        )
 
     def _record_to_document(self, record: dict[str, Any]) -> SnowDocument:
         """Convert a single API record dict into a SnowDocument.
 
         Concatenates the values of content_fields into page_content,
-        separated by newlines. Puts everything else into metadata.
-        Subclasses can override this for custom assembly logic.
+        separated by newlines, reading the label half of each so a field that
+        arrived as a two-halved dict does not land in the text as the string
+        form of that dict. Everything else goes to metadata via
+        :meth:`_build_metadata`. Subclasses can override this for custom
+        assembly logic.
 
         Args:
             record: Raw record dict from the ServiceNow API.
@@ -225,33 +297,56 @@ class BaseSnowLoader:
         Returns:
             A SnowDocument with assembled content and metadata.
         """
-        # Pull text from the designated content fields
         content_parts = []
         for field_name in self.content_fields:
-            value = record.get(field_name, "")
-            if value:
-                content_parts.append(str(value))
+            text = display_value(record.get(field_name))
+            if text:
+                content_parts.append(text)
 
         page_content = "\n".join(content_parts)
 
         # If journals are requested, fetch and append them.
         # Journal fetch is resilient - failures are logged, not raised,
         # so a single inaccessible journal table does not crash the load.
-        sys_id = str(record.get("sys_id", ""))
+        sys_id = raw_value(record.get("sys_id"))
         if self._include_journals and sys_id:
             journals = self._fetch_journals(sys_id)
             journal_text = self._format_journals(journals)
             if journal_text:
                 page_content = page_content + "\n\n" + journal_text
 
-        # Everything goes into metadata for downstream filtering
-        metadata: dict[str, Any] = {
-            "table": self.table,
-        }
-        for key, value in record.items():
-            metadata[key] = value
+        metadata = self._build_metadata(record, {"table": self.table, "sys_id": sys_id})
 
         return SnowDocument(page_content=page_content, metadata=metadata)
+
+    def _build_metadata(
+        self,
+        record: dict[str, Any],
+        curated: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Assemble document metadata from a loader's curated keys.
+
+        Curated entries always win. Expansion only fills what the loader did
+        not set, so a loader that deliberately formats a field keeps its
+        version while the fields it never mentioned still arrive, both
+        halves included.
+
+        Args:
+            record: Raw record dict from the ServiceNow API.
+            curated: Keys the loader assembled by hand.
+
+        Returns:
+            The metadata dict for the document.
+        """
+        metadata: dict[str, Any] = dict(curated)
+
+        if self._expand_references:
+            expand_reference_keys(record, into=metadata)
+
+        if self._include_raw:
+            metadata["raw"] = record
+
+        return metadata
 
     def _fetch_journals(self, sys_id: str) -> list[dict[str, Any]]:
         """Pull work notes and comments for a record from sys_journal_field.
