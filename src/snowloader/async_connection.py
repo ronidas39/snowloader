@@ -322,7 +322,7 @@ class AsyncSnowConnection:
                         "OAuth token response was not valid JSON.",
                         detail=body,
                     ) from exc
-        except aiohttp.ClientError as exc:
+        except (aiohttp.ClientError, TimeoutError) as exc:
             raise SnowConnectionError(
                 f"OAuth token request failed: {exc}",
             ) from exc
@@ -502,7 +502,7 @@ class AsyncSnowConnection:
                             detail=f"Got {type(parsed).__name__} instead of dict",
                         )
                     return cast(dict[str, Any], parsed)
-            except aiohttp.ClientError as exc:
+            except (aiohttp.ClientError, TimeoutError) as exc:
                 if attempt < self.max_retries:
                     logger.warning(
                         "Network error on %s: %s (attempt %d/%d)",
@@ -786,7 +786,7 @@ class AsyncSnowConnection:
                             detail=last_body,
                         )
                     return await resp.read()
-            except aiohttp.ClientError as exc:
+            except (aiohttp.ClientError, TimeoutError) as exc:
                 if attempt < self.max_retries:
                     await asyncio.sleep(backoff)
                     attempt += 1

@@ -10,8 +10,8 @@ Why async, and when not
 
 The default :class:`~snowloader.SnowConnection` walks pages one after
 another. That works fine for small tables but becomes the bottleneck on
-production instances with hundreds of thousands of records. Concurrent
-fetching turns a multi-hour sequential extraction into a matter of minutes.
+production instances with hundreds of thousands of records. Concurrent fetching cuts that substantially, by about five times on the
+instance measured below.
 
 **It is not, however, the fastest path.** Measured against a developer
 instance sweeping ``cmdb_ci``, 2,919 rows, projecting one field:
@@ -128,14 +128,25 @@ Page size, and why the async default is larger
 uses 100. Measured against a developer instance sweeping ``cmdb_ci``, 2,919
 rows, projecting one field, twice:
 
-=====================================================  =======  =======
-Configuration                                            run 1    run 2
-=====================================================  =======  =======
-``page_size=500``, concurrency 16                         9.7s    13.8s
-``page_size=100``, concurrency 16                        18.4s    25.0s
-``page_size=100``, concurrency 8                         19.6s    13.2s
-``page_size=100``, concurrency 16, ``keep_alive=True``   21.7s    15.4s
-=====================================================  =======  =======
+.. list-table::
+   :header-rows: 1
+   :widths: 60 20 20
+
+   * - Configuration
+     - run 1
+     - run 2
+   * - ``page_size=500``, concurrency 16
+     - 9.7s
+     - 13.8s
+   * - ``page_size=100``, concurrency 16
+     - 18.4s
+     - 25.0s
+   * - ``page_size=100``, concurrency 8
+     - 19.6s
+     - 13.2s
+   * - ``page_size=100``, concurrency 16, ``keep_alive=True``
+     - 21.7s
+     - 15.4s
 
 Read that table carefully, because only one row-pair says anything solid.
 Bigger pages beat smaller ones by roughly two to one in **both** runs, which

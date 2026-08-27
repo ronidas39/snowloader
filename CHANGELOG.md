@@ -34,6 +34,33 @@ and nothing told you. Upgrade.
   Applies to `SnowConnection`, `AsyncSnowConnection`, the threaded paginator
   and every loader. No code change needed to get it.
 
+- **A 200 response whose body is not a JSON object no longer loses data on the
+  sync paths.** Some ServiceNow front ends answer with HTTP 200 and a body of
+  `null` under load. The sequential reader called `.get("result")` on it and
+  raised `AttributeError`, which no `except SnowConnectionError` catches. The
+  threaded reader was worse: it turned the page into an empty list, so a sweep
+  of 250 records returned zero and reported success. Both now retry the
+  response and then raise `SnowConnectionError`, matching what the async path
+  has done since 0.2.3.
+
+- **`asyncio.TimeoutError` no longer escapes the async retry loop.** It is not
+  a subclass of `aiohttp.ClientError`, so a total-timeout breach bypassed
+  `max_retries` entirely and reached the caller as an exception their handler
+  did not catch.
+
+- **`SweepReport.complete` accounts for skipped pages.** A report with
+  `failed_pages` greater than zero was still reported complete when the totals
+  happened to line up, which they can when the table grew during the read.
+
+- **`expand_references` and `include_raw` work on every loader.** They were
+  missing from `CMDBLoader` and `AttachmentLoader` and their async variants, so
+  the escape hatch this changelog and the README told upgraders to use raised
+  `TypeError` on the two loaders with the widest records.
+
+- **`AttachmentLoader` expands reference fields.** It was the one loader that
+  never called the shared metadata builder, so it received none of the
+  reference work described below.
+
 - **`sys_id` is a plain string in every display value mode.** With
   `display_value="all"` the loaders put the string form of a dict in metadata,
   so the primary key read as `"{'display_value': '02a73898...', 'value':
@@ -89,6 +116,10 @@ and nothing told you. Upgrade.
   projects to about 34 hours for a 50,000 CI estate. Sweeping the whole
   relationship table on the same instance took 7 seconds.
 
+- **`AsyncRelationshipLoader` and `AsyncTableLoader`.** The README and the
+  async guide both said every sync loader had a matching async variant. Until
+  these existed that was not true of the two loaders added in this release.
+
 - **`aconcurrent_get_records`.** `aget_records` already fetched pages
   concurrently, so this is the same method under the name someone coming from
   the sync API looks for. It used to raise `AttributeError`.
@@ -133,6 +164,11 @@ and nothing told you. Upgrade.
   `snowloader.connection`; nothing needs changing.
 
 ### Build
+
+- The sdist is now an explicit allow list rather than whatever happens to be
+  in the working directory. A locally built sdist was picking up local tooling
+  directories and scratch files: 253 entries, of which 133 had no business
+  being published. It is 92 curated entries now.
 
 - mypy now runs with `python_version = "3.12"` instead of 3.10. numpy ships
   stubs written with PEP 695 `type` statements, which mypy refuses to parse at

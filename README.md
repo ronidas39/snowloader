@@ -119,7 +119,7 @@ snowloader sits between ServiceNow's Table API and whatever LLM stack you are bu
 
 ## Why snowloader?
 
-Building RAG or agentic AI on top of ServiceNow data? Existing tools either cover a single table, ignore relationships, or lock you into one framework. snowloader covers the core tables plus a generic loader for the rest, gives you sync + threaded + async paginators, and stays framework-agnostic at the core so you can plug it into LangChain, LlamaIndex, or your own pipeline.
+Building RAG or agentic AI on top of ServiceNow data. snowloader covers the core tables plus a generic loader for the rest, gives you sync, threaded and async paginators, and keeps the core free of any framework so you can plug it into LangChain, LlamaIndex, or your own pipeline.
 
 <table>
   <tr>
@@ -170,7 +170,7 @@ Building RAG or agentic AI on top of ServiceNow data? Existing tools either cove
       KB articles arrive as plain text. No BeautifulSoup, no extra dependencies.
     </td>
     <td valign="top">
-      <h3>Production-grade</h3>
+      <h3>Tested against a live instance</h3>
       Retry with backoff, rate limiting, thread-safe sessions, proxy support, custom CA bundles.
     </td>
     <td valign="top">
@@ -355,7 +355,7 @@ with SnowConnection(
     instance_url="https://yourcompany.service-now.com",
     username="api_user",
     password="api_pass",
-    page_size=500,
+    page_size=100,
 ) as conn:
     total = conn.get_count("incident", query="state=6^close_notesISNOTEMPTY")
 
@@ -553,7 +553,7 @@ with SnowConnection(
     instance_url="https://yourcompany.service-now.com",
     username="api_user",
     password="api_pass",
-    page_size=1000,
+    page_size=100,
     display_value="all",
     max_retries=5,
 ) as conn:

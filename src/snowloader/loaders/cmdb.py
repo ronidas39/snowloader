@@ -51,15 +51,17 @@ class CMDBLoader(BaseSnowLoader):
             it is off by default.
 
     Example:
-        conn = SnowConnection(...)
-        loader = CMDBLoader(
-            conn,
-            ci_class="cmdb_ci_server",
-            query="operational_status=1",
-            include_relationships=True,
-        )
-        for doc in loader.lazy_load():
-            print(doc.page_content[:300])
+        .. code-block:: python
+
+            conn = SnowConnection(...)
+            loader = CMDBLoader(
+                conn,
+                ci_class="cmdb_ci_server",
+                query="operational_status=1",
+                include_relationships=True,
+            )
+            for doc in loader.lazy_load():
+                print(doc.page_content[:300])
     """
 
     table = "cmdb_ci"
@@ -73,8 +75,16 @@ class CMDBLoader(BaseSnowLoader):
         fields: list[str] | None = None,
         include_relationships: bool = False,
         max_relationship_workers: int = 2,
+        expand_references: bool = True,
+        include_raw: bool = False,
     ) -> None:
-        super().__init__(connection=connection, query=query, fields=fields)
+        super().__init__(
+            connection=connection,
+            query=query,
+            fields=fields,
+            expand_references=expand_references,
+            include_raw=include_raw,
+        )
         if ci_class:
             self.table = ci_class
         self._include_relationships = include_relationships

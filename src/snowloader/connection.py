@@ -988,16 +988,69 @@ class SnowConnection:
             # -- Handle response --
             if resp.ok:
                 try:
-                    result: dict[str, Any] = resp.json()
-                    return result
+                    parsed: object = resp.json()
                 except ValueError as exc:
+                    # Truncated or malformed JSON turns up under sustained
+                    # concurrent load when a server side write gets cut off.
+                    # Treat it as transient and retry, the way the async path
+                    # has since 0.2.4.
+                    if attempt < self.max_retries:
+                        logger.warning(
+                            "API returned non-JSON response for %s %s: %s; "
+                            "retrying (attempt %d/%d)",
+                            method,
+                            url,
+                            exc,
+                            attempt + 1,
+                            self.max_retries,
+                        )
+                        last_error = SnowConnectionError(
+                            f"API returned non-JSON response for {method} {url}",
+                            status_code=resp.status_code,
+                            detail=f"Content-Type: "
+                            f"{resp.headers.get('Content-Type')}. "
+                            f"Body: {resp.text}",
+                        )
+                        continue
                     raise SnowConnectionError(
-                        f"API returned non-JSON response for {method} {url}",
+                        f"API returned non-JSON response for {method} {url} "
+                        f"after {self.max_retries} retries",
                         status_code=resp.status_code,
                         detail=f"Content-Type: "
                         f"{resp.headers.get('Content-Type')}. "
                         f"Body: {resp.text}",
                     ) from exc
+
+                if not isinstance(parsed, dict):
+                    # A 200 whose body is ``null`` or a bare list. Some
+                    # ServiceNow front ends do this under load. Letting it
+                    # through means the caller does .get("result") on None,
+                    # which is an AttributeError nobody catches, or an empty
+                    # page that silently loses every record in it.
+                    if attempt < self.max_retries:
+                        logger.warning(
+                            "API returned non-object JSON for %s %s (type=%s); "
+                            "retrying (attempt %d/%d)",
+                            method,
+                            url,
+                            type(parsed).__name__,
+                            attempt + 1,
+                            self.max_retries,
+                        )
+                        last_error = SnowConnectionError(
+                            f"API returned non-object JSON for {method} {url}",
+                            status_code=resp.status_code,
+                            detail=f"Parsed body type: {type(parsed).__name__}",
+                        )
+                        continue
+                    raise SnowConnectionError(
+                        f"API returned non-object JSON for {method} {url} "
+                        f"after {self.max_retries} retries",
+                        status_code=resp.status_code,
+                        detail=f"Parsed body type: {type(parsed).__name__}. Body: {resp.text}",
+                    )
+
+                return cast(dict[str, Any], parsed)
 
             # -- Retryable errors --
             if resp.status_code in _RETRYABLE_STATUS_CODES:

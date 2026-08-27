@@ -58,14 +58,19 @@ class AttachmentLoader(BaseSnowLoader):
             multi-GB files into memory.
 
     Example:
-        conn = SnowConnection(...)
-        loader = AttachmentLoader(conn, query="table_name=kb_knowledge")
-        for doc in loader.lazy_load():
-            print(doc.metadata["file_name"], doc.metadata["size_bytes"])
+        .. code-block:: python
 
-        # Selectively download a single attachment by sys_id
-        first = next(iter(loader.lazy_load()))
-        loader.download_to(first.metadata["sys_id"], Path("./out") / first.metadata["file_name"])
+            conn = SnowConnection(...)
+            loader = AttachmentLoader(conn, query="table_name=kb_knowledge")
+            for doc in loader.lazy_load():
+                print(doc.metadata["file_name"], doc.metadata["size_bytes"])
+
+            # Selectively download a single attachment by sys_id
+            first = next(iter(loader.lazy_load()))
+            loader.download_to(
+                first.metadata["sys_id"],
+                Path("./out") / first.metadata["file_name"],
+            )
     """
 
     table = "sys_attachment"
@@ -78,8 +83,16 @@ class AttachmentLoader(BaseSnowLoader):
         fields: list[str] | None = None,
         download: bool = False,
         max_size_bytes: int | None = None,
+        expand_references: bool = True,
+        include_raw: bool = False,
     ) -> None:
-        super().__init__(connection=connection, query=query, fields=fields)
+        super().__init__(
+            connection=connection,
+            query=query,
+            fields=fields,
+            expand_references=expand_references,
+            include_raw=include_raw,
+        )
         self._download = download
         self._max_size_bytes = max_size_bytes
 
@@ -156,7 +169,10 @@ class AttachmentLoader(BaseSnowLoader):
                         exc,
                     )
 
-        return SnowDocument(page_content=page_content, metadata=metadata)
+        return SnowDocument(
+            page_content=page_content,
+            metadata=self._build_metadata(record, metadata),
+        )
 
     def download(self, sys_id: str) -> bytes:
         """Fetch the binary content of a single attachment.

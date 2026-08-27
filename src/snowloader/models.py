@@ -57,10 +57,12 @@ class SnowDocument:
 class BaseSnowLoader:
     """Shared foundation for all ServiceNow table loaders.
 
-    Subclasses must define:
-        table: The ServiceNow table name to query (e.g. "incident").
-        content_fields: List of field names whose values get concatenated
-            into the document's page_content.
+    Subclasses must define two class attributes:
+
+    - ``table``: the ServiceNow table name to query, for example
+      ``"incident"``.
+    - ``content_fields``: field names whose values get concatenated into the
+      document's ``page_content``.
 
     The base class takes care of pagination, document assembly, delta sync,
     and journal fetching. Most loaders will not need to override anything
@@ -86,14 +88,16 @@ class BaseSnowLoader:
             copies of every record.
 
     Example:
-        class IncidentLoader(BaseSnowLoader):
-            table = "incident"
-            content_fields = ["short_description", "description"]
+        .. code-block:: python
 
-        conn = SnowConnection(...)
-        loader = IncidentLoader(connection=conn, query="active=true")
-        for doc in loader.lazy_load():
-            print(doc.page_content)
+            class IncidentLoader(BaseSnowLoader):
+                table = "incident"
+                content_fields = ["short_description", "description"]
+
+            conn = SnowConnection(...)
+            loader = IncidentLoader(connection=conn, query="active=true")
+            for doc in loader.lazy_load():
+                print(doc.page_content)
     """
 
     # Subclasses must set these

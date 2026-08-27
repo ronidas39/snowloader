@@ -35,10 +35,12 @@ class ChangeLoader(BaseSnowLoader):
         include_journals: If True, fetches work notes and comments.
 
     Example:
-        conn = SnowConnection(...)
-        loader = ChangeLoader(conn, query="state=3")  # Implement state
-        for doc in loader.lazy_load():
-            print(doc.page_content[:200])
+        .. code-block:: python
+
+            conn = SnowConnection(...)
+            loader = ChangeLoader(conn, query="state=3")  # Implement state
+            for doc in loader.lazy_load():
+                print(doc.page_content[:200])
     """
 
     table = "change_request"

@@ -2,9 +2,8 @@ Concurrent Sync API
 ===================
 
 snowloader's threaded paginator (added in v0.2.5) lets sync code fetch pages
-in parallel without pulling in :mod:`asyncio` or :mod:`aiohttp`. It is the
-fastest way to extract large tables when you do not already have an event
-loop.
+in parallel without pulling in :mod:`asyncio` or :mod:`aiohttp`. On the instance measured for this page it was the fastest of the three
+paths, including the async one.
 
 .. contents::
    :local:
@@ -26,9 +25,10 @@ worker thread holds its own :class:`requests.Session` via
 
 That last detail matters: some ServiceNow front ends silently return empty
 or null bodies under sustained concurrent load when many requests share one
-client session. Per-thread sessions avoid that failure mode and let the
-threaded paginator hit roughly 350-400 records per second on a typical
-instance.
+client session. Per-thread sessions avoid that failure mode. For throughput, see the
+measured table below rather than a headline figure: rates depend on record
+width, instance size and network distance, and a rate quoted from one
+extraction does not transfer.
 
 
 Quick start
@@ -227,7 +227,7 @@ the set get dispatched.
    from pathlib import Path
    from snowloader import SnowConnection
 
-   PAGE_SIZE = 1000
+   PAGE_SIZE = 100
    MAX_WORKERS = 16
 
    def run_pull(conn: SnowConnection, query: str, fields: list[str],

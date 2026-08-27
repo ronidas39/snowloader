@@ -35,10 +35,12 @@ class CatalogLoader(BaseSnowLoader):
         fields: Optional field list override.
 
     Example:
-        conn = SnowConnection(...)
-        loader = CatalogLoader(conn, query="active=true")
-        for doc in loader.lazy_load():
-            print(doc.page_content[:200])
+        .. code-block:: python
+
+            conn = SnowConnection(...)
+            loader = CatalogLoader(conn, query="active=true")
+            for doc in loader.lazy_load():
+                print(doc.page_content[:200])
     """
 
     table = "sc_cat_item"

@@ -48,14 +48,16 @@ class IncidentLoader(BaseSnowLoader):
             sys_journal_field and appends them to each document.
 
     Example:
-        conn = SnowConnection(
-            instance_url="https://mycompany.service-now.com",
-            username="api_user",
-            password="api_pass",
-        )
-        loader = IncidentLoader(conn, query="active=true^priority<=2")
-        for doc in loader.lazy_load():
-            print(doc.page_content[:200])
+        .. code-block:: python
+
+            conn = SnowConnection(
+                instance_url="https://mycompany.service-now.com",
+                username="api_user",
+                password="api_pass",
+            )
+            loader = IncidentLoader(conn, query="active=true^priority<=2")
+            for doc in loader.lazy_load():
+                print(doc.page_content[:200])
     """
 
     table = "incident"

@@ -24,6 +24,8 @@ from snowloader.loaders.cmdb import CMDBLoader
 from snowloader.loaders.incidents import IncidentLoader
 from snowloader.loaders.knowledge_base import KnowledgeBaseLoader
 from snowloader.loaders.problems import ProblemLoader
+from snowloader.loaders.relationships import RelationshipLoader
+from snowloader.loaders.table import TableLoader
 from snowloader.models import BaseSnowLoader, SnowDocument
 
 logger = logging.getLogger(__name__)
@@ -196,12 +198,16 @@ class AsyncCMDBLoader(AsyncBaseSnowLoader):
         query: str | None = None,
         fields: list[str] | None = None,
         ci_class: str | None = None,
+        expand_references: bool = True,
+        include_raw: bool = False,
     ) -> None:
         super().__init__(
             connection,
             query=query,
             fields=fields,
             include_journals=False,
+            expand_references=expand_references,
+            include_raw=include_raw,
         )
         # Override the table set by the assembler if a specific class was requested
         if ci_class:
@@ -231,6 +237,64 @@ class AsyncCatalogLoader(AsyncBaseSnowLoader):
     _sync_loader_class = CatalogLoader
 
 
+class AsyncRelationshipLoader(AsyncBaseSnowLoader):
+    """Async CI relationship loader.
+
+    Streams ``cmdb_rel_ci`` one document per edge, with both endpoints and
+    the relationship type available as sys_ids in metadata.
+    """
+
+    _sync_loader_class = RelationshipLoader
+
+
+class AsyncTableLoader(AsyncBaseSnowLoader):
+    """Async loader for any ServiceNow table with no dedicated loader.
+
+    Args:
+        connection: An initialized :class:`AsyncSnowConnection`.
+        table: ServiceNow table name, e.g. ``"sc_task"``.
+        query: Optional encoded query.
+        fields: Optional field list.
+        content_fields: Field names whose values make up page_content. When
+            omitted, chosen per record from the usual text columns.
+        expand_references: Surface both halves of every field in metadata.
+        include_raw: Attach the untouched API record under ``"raw"``.
+
+    Raises:
+        SnowConnectionError: If table is empty.
+    """
+
+    _sync_loader_class = TableLoader
+
+    def __init__(
+        self,
+        connection: AsyncSnowConnection,
+        table: str,
+        query: str | None = None,
+        fields: list[str] | None = None,
+        content_fields: list[str] | None = None,
+        expand_references: bool = True,
+        include_raw: bool = False,
+    ) -> None:
+        if not table or not table.strip():
+            raise SnowConnectionError(
+                "AsyncTableLoader needs a table name.",
+                detail="Pass the ServiceNow table you want to read, e.g. 'sc_task'.",
+            )
+        super().__init__(
+            connection,
+            query=query,
+            fields=fields,
+            include_journals=False,
+            expand_references=expand_references,
+            include_raw=include_raw,
+        )
+        self.table = table.strip()
+        assembler_any = cast(Any, self._assembler)
+        assembler_any.table = self.table
+        assembler_any.content_fields = list(content_fields) if content_fields else []
+
+
 class AsyncAttachmentLoader(AsyncBaseSnowLoader):
     """Async sys_attachment loader.
 
@@ -258,12 +322,16 @@ class AsyncAttachmentLoader(AsyncBaseSnowLoader):
         fields: list[str] | None = None,
         download: bool = False,
         max_size_bytes: int | None = None,
+        expand_references: bool = True,
+        include_raw: bool = False,
     ) -> None:
         super().__init__(
             connection,
             query=query,
             fields=fields,
             include_journals=False,
+            expand_references=expand_references,
+            include_raw=include_raw,
         )
         self._download = download
         self._max_size_bytes = max_size_bytes

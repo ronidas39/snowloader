@@ -42,8 +42,9 @@ Key features:
   paging cannot silently lose rows to a tied timestamp
 - **Verifiable sweeps** - ``verify=True`` raises instead of quietly returning
   an incomplete extract
-- **9 loaders** for core ServiceNow tables, plus a generic ``TableLoader`` for
-  everything else and a ``RelationshipLoader`` for the CMDB graph
+- **9 loaders**: Incidents, Knowledge Base, CMDB, Changes, Problems, Catalog,
+  Attachments, CI relationships, and a generic ``TableLoader`` for any other
+  table. Each has a matching async variant
 - **Reference fields with both halves** - the readable label and the sys_id
   you join on, on every field
 - **Async support** via aiohttp for concurrent paginated fetches
@@ -51,7 +52,7 @@ Key features:
 - **Delta sync** - only fetch records changed since your last sync
 - **4 authentication modes** - Basic, OAuth Password, OAuth Client Credentials, Bearer Token
 - **LangChain & LlamaIndex adapters** (sync + async) with zero business logic
-- **Production-grade** - retry with backoff, rate limiting, thread safety, proxy support
+- **Operational detail handled** - retry with backoff, rate limiting, thread safety, proxy support
 - **Fully typed** - PEP 561 compliant with ``py.typed`` marker
 
 Created by **Roni Das** · `GitHub <https://github.com/ronidas39>`_ · `PyPI <https://pypi.org/project/snowloader/>`_ · `thetotaltechnology@gmail.com <mailto:thetotaltechnology@gmail.com>`_

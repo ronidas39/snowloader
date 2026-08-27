@@ -42,10 +42,12 @@ class KnowledgeBaseLoader(BaseSnowLoader):
         include_journals: Whether to append journal entries.
 
     Example:
-        conn = SnowConnection(...)
-        loader = KnowledgeBaseLoader(conn, query="workflow_state=published")
-        for doc in loader.lazy_load():
-            print(doc.page_content[:200])
+        .. code-block:: python
+
+            conn = SnowConnection(...)
+            loader = KnowledgeBaseLoader(conn, query="workflow_state=published")
+            for doc in loader.lazy_load():
+                print(doc.page_content[:200])
     """
 
     table = "kb_knowledge"

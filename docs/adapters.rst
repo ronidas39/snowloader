@@ -24,6 +24,12 @@ so they work with any LangChain vector store, retriever, or chain.
 - ``ServiceNowChangeLoader``
 - ``ServiceNowProblemLoader``
 - ``ServiceNowCatalogLoader``
+- ``ServiceNowAttachmentLoader``
+- ``ServiceNowRelationshipLoader``
+- ``ServiceNowTableLoader``
+
+Each also has an async form, prefixed ``Async``, available when snowloader is
+installed with the ``async`` extra.
 
 **Usage:**
 
@@ -80,6 +86,11 @@ so they work with any LlamaIndex index.
 - ``ServiceNowChangeReader``
 - ``ServiceNowProblemReader``
 - ``ServiceNowCatalogReader``
+- ``ServiceNowAttachmentReader``
+- ``ServiceNowRelationshipReader``
+- ``ServiceNowTableReader``
+
+Each also has an async form, prefixed ``Async``.
 
 **Usage:**
 
@@ -101,8 +112,11 @@ so they work with any LlamaIndex index.
 
 **Metadata exclusion:**
 
-By default, ``sys_id`` is excluded from LLM metadata (it is still available
-in the metadata dict, but marked so embedding models and LLMs skip it).
+By default ``sys_id`` is excluded from LLM metadata, and since 0.3.0 so is
+every ``*_sys_id`` companion key that reference expansion adds. They stay in
+the metadata dict, where they are what you join on, but they are marked so
+embedding models and LLMs skip them. A 32 character identifier teaches a
+model nothing and you pay for every one of them.
 You can customize this:
 
 .. code-block:: python

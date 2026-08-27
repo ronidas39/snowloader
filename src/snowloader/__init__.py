@@ -47,6 +47,8 @@ try:
         AsyncIncidentLoader,
         AsyncKnowledgeBaseLoader,
         AsyncProblemLoader,
+        AsyncRelationshipLoader,
+        AsyncTableLoader,
     )
 
     _ASYNC_EXPORTS = [
@@ -58,7 +60,9 @@ try:
         "AsyncIncidentLoader",
         "AsyncKnowledgeBaseLoader",
         "AsyncProblemLoader",
+        "AsyncRelationshipLoader",
         "AsyncSnowConnection",
+        "AsyncTableLoader",
     ]
 except ImportError:
     _ASYNC_EXPORTS = []

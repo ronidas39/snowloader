@@ -63,11 +63,17 @@ class SweepReport:
     def complete(self) -> bool:
         """Whether the sweep can be trusted to hold every record.
 
-        A sweep is complete when nothing is missing and nothing was
-        duplicated. Coming back with more distinct records than expected is
-        not a failure: it means rows were inserted while the sweep ran.
+        A sweep is complete when nothing is missing, nothing was duplicated,
+        and no page was skipped. Coming back with more distinct records than
+        expected is not a failure: it means rows were inserted while the
+        sweep ran.
+
+        Skipped pages count even when the totals happen to line up. A table
+        that grew during the read can hide a dropped page behind the extra
+        rows, and a sweep that is known to have thrown a page away is not one
+        anybody should call complete.
         """
-        return self.missing == 0 and self.duplicates == 0
+        return self.missing == 0 and self.duplicates == 0 and self.failed_pages == 0
 
     def __str__(self) -> str:
         return (

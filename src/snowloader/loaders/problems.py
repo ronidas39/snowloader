@@ -37,10 +37,12 @@ class ProblemLoader(BaseSnowLoader):
         include_journals: If True, fetches work notes and comments.
 
     Example:
-        conn = SnowConnection(...)
-        loader = ProblemLoader(conn, query="known_error=true")
-        for doc in loader.lazy_load():
-            print(doc.page_content[:200])
+        .. code-block:: python
+
+            conn = SnowConnection(...)
+            loader = ProblemLoader(conn, query="known_error=true")
+            for doc in loader.lazy_load():
+                print(doc.page_content[:200])
     """
 
     table = "problem"
