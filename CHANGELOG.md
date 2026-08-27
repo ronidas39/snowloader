@@ -2,6 +2,38 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.3.1] - 2026-08-28
+
+Documentation only. No code changed, so there is nothing to gain by upgrading
+from 0.3.0 unless you want the newer project page.
+
+PyPI renders the README that was inside the uploaded distribution rather than
+the one in the repository, and it does not accept a re-upload of a version
+that already exists. The project page was therefore stuck showing the README
+as it stood when 0.3.0 was tagged. This release exists to move it forward.
+
+### Documentation
+
+- The Read the Docs site has a stylesheet of its own for the first time,
+  drawn in the same palette as the diagrams so the pages and the images look
+  like one thing. It adds a hero, feature cards, a numbers strip, framed
+  figures with captions, and a dark mode that does not wash the diagrams out.
+- The landing page was rebuilt around it: what the library is for, the
+  pagination diagram and the numbers behind it, what you get, and how the
+  pieces fit together.
+- New diagram showing incident metadata before and after 0.3.0, which makes
+  the reference field change easier to see than to read about.
+- The architecture diagram was still saying seven loaders and had no
+  `cmdb_rel_ci` on it. The throughput chart was showing estimated relative
+  bars; it now shows the measured seconds behind them.
+- README reorganised for the project pages: one badge row rather than three, a
+  plainer statement of what the library does, the pagination diagram directly
+  under it, and a table of the numbers. Verified through `readme_renderer`,
+  which is what PyPI runs, so the diagrams and tables are known to survive its
+  sanitising.
+- Swapped the downloads badge, which was often rendering as rate limited by
+  the upstream service.
+
 ## [0.3.0] - 2026-08-27
 
 This release fixes a data loss bug. If you are on 0.2.x and you sweep a table
