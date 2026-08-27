@@ -375,6 +375,81 @@ def build_pagination() -> None:
     plt.close(fig)
 
 
+def build_references() -> None:
+    """What a loader put in metadata before 0.3.0, and what it puts there now."""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5.4), dpi=150)
+    fig.patch.set_facecolor(COLOR_BG)
+
+    before = [
+        ("sys_id", "\"{'display_value': '02a7...',", "#d93025"),
+        ("", " 'value': '02a7...'}\"", "#d93025"),
+        ("assigned_to", "'David Loo'", COLOR_TEXT),
+        ("assignment_group", "''", COLOR_MUTED),
+        ("cmdb_ci", "'b297b098...'", "#d93025"),
+        ("caller_id", "absent", "#d93025"),
+        ("opened_by", "absent", "#d93025"),
+        ("priority", "'5 - Planning'", COLOR_TEXT),
+    ]
+    after = [
+        ("sys_id", "'02a73898...'", COLOR_SUCCESS),
+        ("assigned_to", "'David Loo'", COLOR_TEXT),
+        ("assigned_to_sys_id", "'6816f79c...'", COLOR_SUCCESS),
+        ("assignment_group", "'Service Desk'", COLOR_TEXT),
+        ("assignment_group_sys_id", "'d625dcce...'", COLOR_SUCCESS),
+        ("cmdb_ci", "'PROD-DB-01'", COLOR_TEXT),
+        ("cmdb_ci_sys_id", "'b297b098...'", COLOR_SUCCESS),
+        ("caller_id", "'survey user'", COLOR_TEXT),
+        ("caller_id_sys_id", "'005d500b...'", COLOR_SUCCESS),
+        ("priority", "'5 - Planning'", COLOR_TEXT),
+        ("priority_value", "'5'", COLOR_SUCCESS),
+    ]
+
+    panels = [
+        (axes[0], "Before 0.3.0", before,
+         "No identifier anywhere. Nothing joins to anything.", False),
+        (axes[1], "0.3.0", after,
+         "Every reference joinable. Primary key is a plain string.", True),
+    ]
+
+    for ax, title, rows, caption, ok in panels:
+        ax.set_facecolor(COLOR_BG)
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 13.4)
+        ax.axis("off")
+
+        ax.text(5, 12.9, title, ha="center", va="center", fontsize=14,
+                color=COLOR_TEXT, family=FONT_FAMILY, weight="bold")
+        ax.text(5, 12.15, "doc.metadata", ha="center", va="center", fontsize=9.5,
+                color=COLOR_MUTED, family="DejaVu Sans Mono")
+
+        top = 11.3
+        step = 0.86
+        for i, (key, value, colour) in enumerate(rows):
+            y = top - i * step
+            if key:
+                ax.text(0.35, y, key, ha="left", va="center", fontsize=10,
+                        color=COLOR_TEXT, family="DejaVu Sans Mono")
+            ax.text(5.15, y, value, ha="left", va="center", fontsize=10,
+                    color=colour, family="DejaVu Sans Mono",
+                    weight="bold" if colour in (COLOR_SUCCESS, "#d93025") else "normal")
+
+        ax.add_patch(FancyBboxPatch(
+            (0.25, 0.35), 9.4, 1.25,
+            boxstyle="round,pad=0.02,rounding_size=0.14",
+            facecolor="#e6f4ea" if ok else "#fdeceb",
+            edgecolor=COLOR_SUCCESS if ok else "#d93025", linewidth=1.4))
+        ax.text(4.95, 0.97, caption, ha="center", va="center", fontsize=9.5,
+                color=COLOR_SUCCESS if ok else "#d93025",
+                family=FONT_FAMILY, weight="bold")
+
+    fig.suptitle(
+        "Reference fields now carry both halves",
+        fontsize=15, color=COLOR_TEXT, family=FONT_FAMILY, weight="bold", y=0.99)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(OUT_DIR / "references.png", facecolor=fig.get_facecolor(), bbox_inches="tight")
+    plt.close(fig)
+
+
 def build_decision() -> None:
     fig, ax = plt.subplots(figsize=(10, 5.4), dpi=140)
     fig.patch.set_facecolor(COLOR_BG)
@@ -439,6 +514,7 @@ def main() -> None:
     build_architecture()
     build_performance()
     build_pagination()
+    build_references()
     build_decision()
     print("Wrote:")
     for name in ("architecture.png", "performance.png", "decision.png"):

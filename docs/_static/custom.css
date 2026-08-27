@@ -1,0 +1,320 @@
+/* snowloader documentation styling.
+ *
+ * Layered on top of the furo theme. The palette is the same one the diagrams
+ * in _static are drawn with, so the pages and the images look like one thing
+ * rather than two.
+ *
+ * Author: Roni Das
+ */
+
+:root {
+  --snow-primary: #1a73e8;
+  --snow-deep: #0b3d91;
+  --snow-accent: #4fc3f7;
+  --snow-success: #10b981;
+  --snow-danger: #d93025;
+  --snow-ink: #0f172a;
+  --snow-muted: #475569;
+  --snow-line: #cbd5e1;
+  --snow-surface: #ffffff;
+  --snow-canvas: #f8fafc;
+}
+
+body {
+  --color-brand-primary: var(--snow-primary);
+  --color-brand-content: var(--snow-primary);
+}
+
+body[data-theme="dark"] {
+  --snow-ink: #e2e8f0;
+  --snow-muted: #94a3b8;
+  --snow-line: #334155;
+  --snow-surface: #131a24;
+  --snow-canvas: #0d1117;
+  --color-brand-primary: var(--snow-accent);
+  --color-brand-content: var(--snow-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --snow-ink: #e2e8f0;
+    --snow-muted: #94a3b8;
+    --snow-line: #334155;
+    --snow-surface: #131a24;
+    --snow-canvas: #0d1117;
+    --color-brand-primary: var(--snow-accent);
+    --color-brand-content: var(--snow-accent);
+  }
+}
+
+/* ------------------------------------------------------------------ hero */
+
+/* The document needs an H1 for the navigation and the page title, but the
+   hero below it carries its own. Hide the duplicate on pages that have one. */
+.content h1:has(+ .snow-hero) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.snow-hero {
+  margin: 0 0 2.5rem;
+  padding: 2.5rem 2rem 2.25rem;
+  border-radius: 16px;
+  border: 1px solid var(--snow-line);
+  background:
+    radial-gradient(1100px 320px at 12% -10%, rgba(79, 195, 247, 0.20), transparent 62%),
+    radial-gradient(900px 300px at 92% 0%, rgba(26, 115, 232, 0.16), transparent 60%),
+    var(--snow-canvas);
+}
+
+.snow-hero h1 {
+  margin: 0 0 0.4rem;
+  font-size: 2.6rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 800;
+  color: var(--snow-ink);
+}
+
+.snow-hero .snow-tagline {
+  margin: 0 0 1.1rem;
+  font-size: 1.12rem;
+  line-height: 1.55;
+  color: var(--snow-muted);
+  max-width: 62ch;
+}
+
+.snow-hero .snow-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1.4rem;
+}
+
+.snow-hero .snow-badges img {
+  height: 20px;
+  margin: 0;
+}
+
+.snow-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.snow-cta a {
+  display: inline-block;
+  padding: 0.6rem 1.15rem;
+  border-radius: 9px;
+  font-weight: 650;
+  font-size: 0.94rem;
+  text-decoration: none;
+  border: 1px solid var(--snow-line);
+  color: var(--snow-ink);
+  background: var(--snow-surface);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.snow-cta a:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.12);
+  text-decoration: none;
+}
+
+.snow-cta a.snow-cta-primary {
+  background: var(--snow-primary);
+  border-color: var(--snow-deep);
+  color: #ffffff;
+}
+
+/* ----------------------------------------------------------------- cards */
+
+.snow-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(258px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.snow-card {
+  padding: 1.15rem 1.2rem 1.25rem;
+  border-radius: 13px;
+  border: 1px solid var(--snow-line);
+  background: var(--snow-surface);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.snow-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--snow-primary);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.10);
+}
+
+.snow-card h3 {
+  margin: 0 0 0.45rem;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--snow-ink);
+  line-height: 1.3;
+}
+
+.snow-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--snow-muted);
+}
+
+.snow-card .snow-kicker {
+  display: inline-block;
+  margin-bottom: 0.55rem;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--snow-deep);
+  background: rgba(79, 195, 247, 0.22);
+}
+
+.snow-card.snow-card-alert .snow-kicker {
+  color: #8a1c12;
+  background: rgba(217, 48, 37, 0.16);
+}
+
+body[data-theme="dark"] .snow-card .snow-kicker {
+  color: #dbeafe;
+  background: rgba(26, 115, 232, 0.34);
+}
+
+body[data-theme="dark"] .snow-card.snow-card-alert .snow-kicker {
+  color: #ffd9d4;
+  background: rgba(217, 48, 37, 0.42);
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .snow-card .snow-kicker {
+    color: #dbeafe;
+    background: rgba(26, 115, 232, 0.34);
+  }
+  body:not([data-theme="light"]) .snow-card.snow-card-alert .snow-kicker {
+    color: #ffd9d4;
+    background: rgba(217, 48, 37, 0.42);
+  }
+}
+
+/* --------------------------------------------------------- numbers strip */
+
+.snow-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.85rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.snow-stat {
+  padding: 1rem 0.9rem;
+  border-radius: 12px;
+  text-align: center;
+  border: 1px solid var(--snow-line);
+  background: var(--snow-canvas);
+}
+
+.snow-stat .snow-stat-value {
+  display: block;
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--snow-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.snow-stat .snow-stat-label {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--snow-muted);
+}
+
+/* ------------------------------------------------------------- diagrams */
+
+.snow-figure {
+  margin: 1.75rem 0;
+  padding: 0.9rem;
+  border-radius: 13px;
+  border: 1px solid var(--snow-line);
+  background: var(--snow-canvas);
+}
+
+.snow-figure img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.snow-figure .snow-caption {
+  margin: 0.7rem 0.2rem 0.1rem;
+  font-size: 0.83rem;
+  line-height: 1.5;
+  color: var(--snow-muted);
+  text-align: center;
+}
+
+/* Diagrams are drawn on a light canvas, so keep them legible in dark mode
+   without inverting the colours into something unrecognisable. */
+body[data-theme="dark"] .snow-figure img,
+body[data-theme="dark"] .content img[src*="_static/"] {
+  background: #f8fafc;
+  padding: 0.4rem;
+  border-radius: 8px;
+}
+
+/* --------------------------------------------------------------- tables */
+
+.content table.docutils {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid var(--snow-line);
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.content table.docutils thead th {
+  background: var(--snow-canvas);
+  color: var(--snow-ink);
+  font-weight: 700;
+  border-bottom: 2px solid var(--snow-line);
+}
+
+.content table.docutils tbody tr:nth-child(even) {
+  background: rgba(148, 163, 184, 0.07);
+}
+
+/* ------------------------------------------------------------- polish */
+
+.content h2 {
+  margin-top: 2.6rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid var(--snow-line);
+}
+
+.sidebar-brand-text {
+  font-weight: 750;
+  letter-spacing: -0.01em;
+}
+
+.content div.highlight {
+  border-radius: 10px;
+  border: 1px solid var(--snow-line);
+}
+
+.content a.reference.external::after {
+  content: "";
+}

@@ -38,7 +38,17 @@ What loaders put in metadata
 ----------------------------
 
 Since 0.3.0 every field on a record reaches document metadata, and any field
-whose two halves differ gains a companion key beside it:
+whose two halves differ gains a companion key beside it.
+
+.. raw:: html
+
+   <div class="snow-figure">
+     <img alt="Incident metadata before and after 0.3.0" src="_static/references.png">
+     <p class="snow-caption">The same incident, read the same way. Before, the primary key was the string
+     form of a dict, cmdb_ci held an identifier where its siblings held labels, and the caller was missing entirely.</p>
+   </div>
+
+In code:
 
 .. code-block:: python
 

@@ -1,47 +1,60 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/logo.png" alt="snowloader" width="150">
+  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/logo.png" alt="snowloader" width="140">
 </p>
 
 <h1 align="center">snowloader</h1>
 
 <p align="center">
-  <em>Production ServiceNow data loader for AI, RAG, and agent pipelines.</em>
+  <b>Get ServiceNow data into your AI pipeline without quietly losing rows.</b>
 </p>
 
-<p align="center"><strong>Created by <a href="https://github.com/ronidas39">Roni Das</a></strong> · <a href="mailto:thetotaltechnology@gmail.com">thetotaltechnology@gmail.com</a></p>
+<p align="center">
+  Incidents, Knowledge Base, CMDB, Changes, Problems, Catalog and attachments,<br>
+  into LangChain, LlamaIndex, or your own code. Every sweep sorts on a unique key,<br>
+  so offset pagination cannot drop records, and it can prove it returned everything.
+</p>
 
 <p align="center">
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&color=1a73e8" alt="PyPI version"></a>
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&color=4fc3f7" alt="Python versions"></a>
-  <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/dm/snowloader.svg?label=downloads&color=10b981" alt="Downloads"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
-</p>
-<p align="center">
   <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://snowloader.readthedocs.io"><img src="https://readthedocs.org/projects/snowloader/badge/?version=latest" alt="Documentation"></a>
+  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-346%20passing-10b981.svg" alt="Tests"></a>
   <a href="https://peps.python.org/pep-0561/"><img src="https://img.shields.io/badge/typing-strict-1a73e8.svg" alt="Typed"></a>
-  <a href="https://github.com/ronidas39/snowloader"><img src="https://img.shields.io/badge/code%20style-ruff-1a73e8.svg" alt="Ruff"></a>
-</p>
-<p align="center">
-  <a href="https://github.com/ronidas39/snowloader"><img src="https://img.shields.io/badge/langchain-supported-4fc3f7.svg" alt="LangChain supported"></a>
-  <a href="https://github.com/ronidas39/snowloader"><img src="https://img.shields.io/badge/llamaindex-supported-4fc3f7.svg" alt="LlamaIndex supported"></a>
-  <a href="https://github.com/ronidas39/snowloader"><img src="https://img.shields.io/badge/async-aiohttp-10b981.svg" alt="Async support"></a>
-  <a href="https://github.com/ronidas39/snowloader"><img src="https://img.shields.io/badge/threaded-yes-10b981.svg" alt="Threaded paginator"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
 
 <p align="center">
-  <strong><a href="https://snowloader.readthedocs.io">Documentation</a></strong>
-   ·
-  <strong><a href="https://pypi.org/project/snowloader/">PyPI</a></strong>
-   ·
-  <strong><a href="https://github.com/ronidas39/snowloader">Source</a></strong>
-   ·
-  <strong><a href="#installation">Install</a></strong>
-   ·
-  <strong><a href="#api-cheatsheet">API cheatsheet</a></strong>
-   ·
-  <strong><a href="#roadmap">Roadmap</a></strong>
+  <a href="https://snowloader.readthedocs.io"><b>Documentation</b></a>
+  &nbsp;·&nbsp;
+  <a href="https://pypi.org/project/snowloader/"><b>PyPI</b></a>
+  &nbsp;·&nbsp;
+  <a href="#installation"><b>Install</b></a>
+  &nbsp;·&nbsp;
+  <a href="#upgrading-to-030"><b>Upgrading</b></a>
+  &nbsp;·&nbsp;
+  <a href="#api-cheatsheet"><b>API</b></a>
+  &nbsp;·&nbsp;
+  <a href="#roadmap"><b>Roadmap</b></a>
 </p>
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/pagination.png" alt="Offset pagination over a non-unique sort column returns some rows twice and skips others" width="960">
+</p>
+
+<p align="center">
+  <i>Every release before 0.3.0 paged over a column that is not unique. The count still reconciled, so nothing reported it.</i>
+</p>
+
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><b>9</b><br>loaders, each with<br>an async variant</td>
+    <td align="center"><b>3</b><br>pagination paths:<br>sequential, threaded, async</td>
+    <td align="center"><b>4</b><br>authentication<br>modes</td>
+    <td align="center"><b>346</b><br>unit tests, plus 21<br>against a live instance</td>
+  </tr>
+</table>
+</div>
 
 ---
 
@@ -61,10 +74,6 @@ Three lines from a ServiceNow instance to a list of documents your vector store 
 
 ## What 0.3.0 fixes
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/pagination.png" alt="Offset pagination over a non-unique sort column returns some rows twice and skips others" width="960">
-</p>
-
 ServiceNow does not guarantee a stable row order inside a group of rows that tie on the sort column. Every release before 0.3.0 paged over `sys_created_on`, which is not unique, so a page boundary landing inside a tied group returned some rows twice and skipped others.
 
 The returned count still matched, so nothing reported a problem. The loss was identical on every run, so re-running never revealed it. Measured on a developer instance where `cmdb_ci` holds 2,919 rows across only 818 distinct timestamps, three consecutive sweeps each returned 2,919 rows and only 2,915 of them were distinct.
@@ -74,6 +83,12 @@ Every ORDERBY chain now ends in `sys_id`, and you can ask a sweep to prove it wa
 ```python
 records = list(conn.get_records("cmdb_ci", verify=True))   # raises if anything is missing
 ```
+
+The second thing it fixes is that a document could not be joined to anything. The loaders returned labels and threw the identifiers away.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/references.png" alt="Incident metadata before and after 0.3.0" width="960">
+</p>
 
 Details in [the upgrade notes](#upgrading-to-030).
 
