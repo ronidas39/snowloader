@@ -14,7 +14,7 @@ snowloader
 .. |license| image:: https://img.shields.io/badge/License-MIT-blue.svg
    :target: https://opensource.org/licenses/MIT
 
-**Comprehensive ServiceNow data loader for AI/LLM pipelines.**
+**ServiceNow data loader for AI and LLM pipelines.**
 
 snowloader pulls data from ServiceNow - Incidents, Knowledge Base, CMDB,
 Changes, Problems, and Service Catalog - and converts it into document

@@ -45,7 +45,7 @@
 
 ---
 
-## TL;DR
+## In three lines
 
 ```python
 from snowloader import SnowConnection, IncidentLoader
@@ -55,7 +55,27 @@ with SnowConnection(instance_url="https://yourcompany.service-now.com",
     docs = IncidentLoader(connection=conn, query="active=true").load()
 ```
 
-Three lines from a ServiceNow instance to a list of documents your vector store understands. Same loader objects work with LangChain, LlamaIndex, or anything else that accepts a list of dicts.
+Three lines from a ServiceNow instance to a list of documents your vector store understands. The same loader objects work with LangChain, LlamaIndex, or anything else that accepts a list of dicts.
+
+---
+
+## What 0.3.0 fixes
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/pagination.png" alt="Offset pagination over a non-unique sort column returns some rows twice and skips others" width="960">
+</p>
+
+ServiceNow does not guarantee a stable row order inside a group of rows that tie on the sort column. Every release before 0.3.0 paged over `sys_created_on`, which is not unique, so a page boundary landing inside a tied group returned some rows twice and skipped others.
+
+The returned count still matched, so nothing reported a problem. The loss was identical on every run, so re-running never revealed it. Measured on a developer instance where `cmdb_ci` holds 2,919 rows across only 818 distinct timestamps, three consecutive sweeps each returned 2,919 rows and only 2,915 of them were distinct.
+
+Every ORDERBY chain now ends in `sys_id`, and you can ask a sweep to prove it was complete:
+
+```python
+records = list(conn.get_records("cmdb_ci", verify=True))   # raises if anything is missing
+```
+
+Details in [the upgrade notes](#upgrading-to-030).
 
 ---
 
@@ -227,11 +247,15 @@ doc.metadata["priority_value"]           # '5'
   <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/decision.png" alt="API decision tree" width="850">
 </p>
 
-Three concurrency models, three jobs:
+Three concurrency models, three jobs. The numbers below came out of a run against a developer instance, not an estimate. Reproduce them on your own instance with `scripts/benchmark_v030.py`.
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/performance.png" alt="Relative throughput" width="850">
+  <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/performance.png" alt="Threaded sweep timings by worker count" width="900">
 </p>
+
+Two things worth taking from that chart. Throughput peaks at 16 workers, which is why 16 is the default, and 32 workers came out slower than 16 rather than marginally faster. Page size in the low hundreds measured best on this path; raising it does not buy speed here, because throughput is bounded by how many pages are in flight rather than by request count.
+
+The async path pulls the other way and wants larger pages, which is why its default is 500. Do not carry a page size from one path to the other.
 
 The threaded path uses a per-thread `requests.Session`, which keeps connection pools and TLS state isolated per worker and avoids the connection-reuse failures some ServiceNow front ends exhibit when many concurrent requests share one session.
 

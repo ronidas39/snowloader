@@ -20,6 +20,13 @@ column, so a page boundary landing inside a tied group can return some rows
 twice and skip others.
 
 Every release before 0.3.0 sorted on ``sys_created_on``, which is not unique.
+
+.. image:: _static/pagination.png
+   :alt: A page boundary inside a group of rows that tie on the sort column
+         returns some rows twice and skips others
+   :align: center
+   :width: 100%
+
 On a developer instance, ``cmdb_ci`` holds 2,919 rows spread across only 818
 distinct ``sys_created_on`` values, and 31 rows share the single worst
 timestamp. Three consecutive sweeps of that table:

@@ -122,15 +122,17 @@ def build_architecture() -> None:
         "incident",
         "kb_knowledge",
         "cmdb_ci",
+        "cmdb_rel_ci",
         "change_request",
         "problem",
         "sc_cat_item",
         "sys_attachment",
+        "any other table",
     ]
     col1_x = 2
     col1_w = 22
-    table_h = 7.0
-    table_gap = 1.5
+    table_h = 6.0
+    table_gap = 1.3
     col1_top = 80
     for i, label in enumerate(table_labels):
         y = col1_top - i * (table_h + table_gap)
@@ -167,9 +169,9 @@ def build_architecture() -> None:
         "SnowConnection",
         "AsyncSnowConnection",
         "concurrent_get_records",
-        "7 loaders",
+        "verify=True",
+        "9 loaders",
         "SnowDocument",
-        "parse_labelled_int",
     ]
     line_top = col2_y + col2_h - 17
     line_step = 7.5
@@ -228,51 +230,63 @@ def build_architecture() -> None:
 
 
 def build_performance() -> None:
-    fig, ax = plt.subplots(figsize=(10, 4.4), dpi=140)
+    """Threaded worker scaling, from scripts/benchmark_v030.py on a live instance."""
+    fig, ax = plt.subplots(figsize=(10, 4.6), dpi=140)
     fig.patch.set_facecolor(COLOR_BG)
     ax.set_facecolor(COLOR_BG)
 
-    paths = ["Sequential\nget_records", "Async\naget_records", "Threaded\nconcurrent_get_records"]
-    # Relative throughput, no absolute numbers
-    relative = [1.0, 6.0, 7.0]
-    colors = [COLOR_MUTED, COLOR_ACCENT, COLOR_PRIMARY]
+    labels = ["sequential", "4 workers", "8 workers", "16 workers", "32 workers"]
+    seconds = [46.4, 14.6, 8.2, 6.4, 8.1]
+    speedup = [46.4 / s for s in seconds]
+    colors = [COLOR_MUTED, COLOR_ACCENT, COLOR_ACCENT, COLOR_PRIMARY, COLOR_ACCENT]
 
-    bars = ax.barh(paths, relative, color=colors, edgecolor=COLOR_BORDER, linewidth=0.8)
-    for bar, value in zip(bars, relative):
+    bars = ax.bar(labels, seconds, color=colors, edgecolor=COLOR_BORDER, linewidth=0.8, width=0.62)
+    for bar, sec, mult in zip(bars, seconds, speedup, strict=True):
         ax.text(
-            bar.get_width() + 0.12,
-            bar.get_y() + bar.get_height() / 2,
-            f"{value:g}x",
-            va="center",
-            ha="left",
-            fontsize=12,
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + 1.2,
+            f"{sec}s\n{mult:.1f}x",
+            ha="center",
+            va="bottom",
+            fontsize=10.5,
             color=COLOR_TEXT,
             family=FONT_FAMILY,
             weight="bold",
         )
 
+    ax.annotate(
+        "peak, and the default",
+        xy=(3, 6.4),
+        xytext=(2.55, 30),
+        ha="center",
+        fontsize=10,
+        color=COLOR_DEEP,
+        family=FONT_FAMILY,
+        weight="bold",
+        arrowprops={"arrowstyle": "->", "color": COLOR_DEEP, "linewidth": 1.4},
+    )
+
     ax.set_title(
-        "Relative throughput on a typical instance",
+        "Threaded sweep of 2,919 records, measured on a developer instance",
         fontsize=13,
         color=COLOR_TEXT,
         family=FONT_FAMILY,
         weight="bold",
         pad=14,
     )
-    ax.set_xlabel("Records per second relative to sequential baseline", color=COLOR_MUTED, family=FONT_FAMILY, fontsize=10)
-    ax.tick_params(colors=COLOR_MUTED, labelsize=10)
+    ax.set_ylabel("seconds, lower is better", color=COLOR_MUTED, family=FONT_FAMILY, fontsize=10)
+    ax.tick_params(colors=COLOR_MUTED, labelsize=10.5)
     for spine_name in ("top", "right"):
         ax.spines[spine_name].set_visible(False)
     for spine_name in ("left", "bottom"):
         ax.spines[spine_name].set_color(COLOR_BORDER)
-    ax.set_xlim(0, max(relative) + 1.4)
-    ax.invert_yaxis()
-    ax.grid(axis="x", color=COLOR_BORDER, linestyle="--", alpha=0.4)
+    ax.set_ylim(0, 56)
+    ax.grid(axis="y", color=COLOR_BORDER, linestyle="--", alpha=0.4)
 
     ax.text(
         0.99,
-        -0.22,
-        "Exact ratios depend on instance size, network distance, page size, and query cost.",
+        -0.20,
+        "Throughput turns over after 16 workers. Reproduce with scripts/benchmark_v030.py.",
         transform=ax.transAxes,
         ha="right",
         va="top",
@@ -284,6 +298,80 @@ def build_performance() -> None:
 
     fig.tight_layout(pad=1.2)
     fig.savefig(OUT_DIR / "performance.png", facecolor=fig.get_facecolor(), bbox_inches="tight")
+    plt.close(fig)
+
+
+def build_pagination() -> None:
+    """Why offset paging over a non-unique sort column loses rows, and the fix."""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5.2), dpi=140)
+    fig.patch.set_facecolor(COLOR_BG)
+
+    # Eight rows that all share one sys_created_on value, paged 4 at a time.
+    # Left: the server is free to reorder inside the tie, so page 2 re-serves
+    # rows page 1 already gave us and never serves C and D.
+    before_page1 = ["A", "B", "C", "D"]
+    before_page2 = ["A", "B", "E", "F"]
+    after_page1 = ["A", "B", "C", "D"]
+    after_page2 = ["E", "F", "G", "H"]
+
+    panels = [
+        (axes[0], "Before 0.3.0", "ORDERBYsys_created_on", before_page1, before_page2,
+         {"A", "B"}, "G and H never arrive. A and B arrive twice."),
+        (axes[1], "0.3.0", "ORDERBYsys_created_on^ORDERBYsys_id", after_page1, after_page2,
+         set(), "Every row exactly once."),
+    ]
+
+    for ax, title, query, page1, page2, dup, caption in panels:
+        ax.set_facecolor(COLOR_BG)
+        ax.set_xlim(0, 10)
+        ax.set_ylim(0, 10)
+        ax.axis("off")
+
+        ax.text(5, 9.6, title, ha="center", va="center", fontsize=14,
+                color=COLOR_TEXT, family=FONT_FAMILY, weight="bold")
+        ax.text(5, 8.85, query, ha="center", va="center", fontsize=9.5,
+                color=COLOR_MUTED, family="DejaVu Sans Mono")
+
+        for row_i, (label, rows) in enumerate((("page 1", page1), ("page 2", page2))):
+            y = 7.2 - row_i * 3.1
+            ax.text(0.4, y + 0.92, label, ha="left", va="center", fontsize=10.5,
+                    color=COLOR_MUTED, family=FONT_FAMILY, weight="bold")
+            for col_i, cell in enumerate(rows):
+                x = 0.4 + col_i * 2.25
+                is_dup = row_i == 1 and cell in dup
+                face = "#fde2e1" if is_dup else COLOR_CARD
+                edge = "#d93025" if is_dup else COLOR_BORDER
+                ax.add_patch(FancyBboxPatch(
+                    (x, y - 0.55), 2.0, 1.05,
+                    boxstyle="round,pad=0.02,rounding_size=0.12",
+                    facecolor=face, edgecolor=edge, linewidth=1.6 if is_dup else 1.0))
+                ax.text(x + 1.0, y - 0.02, cell, ha="center", va="center", fontsize=13,
+                        color="#d93025" if is_dup else COLOR_TEXT,
+                        family=FONT_FAMILY, weight="bold")
+                if is_dup:
+                    ax.text(x + 1.0, y - 0.95, "duplicate", ha="center", va="center",
+                            fontsize=8.5, color="#d93025", family=FONT_FAMILY, weight="bold")
+
+        ok = not dup
+        ax.add_patch(FancyBboxPatch(
+            (0.4, 0.55), 9.0, 1.5,
+            boxstyle="round,pad=0.02,rounding_size=0.14",
+            facecolor="#e6f4ea" if ok else "#fdeceb",
+            edgecolor=COLOR_SUCCESS if ok else "#d93025", linewidth=1.4))
+        ax.text(4.9, 1.55, caption, ha="center", va="center", fontsize=10.5,
+                color=COLOR_SUCCESS if ok else "#d93025",
+                family=FONT_FAMILY, weight="bold")
+        ax.text(4.9, 0.98,
+                "returned 2919, distinct 2919" if ok else
+                "returned 2919, distinct 2915, and the count still reconciles",
+                ha="center", va="center", fontsize=9.5, color=COLOR_MUTED,
+                family="DejaVu Sans Mono")
+
+    fig.suptitle(
+        "Offset pagination is only safe over a unique sort key",
+        fontsize=15, color=COLOR_TEXT, family=FONT_FAMILY, weight="bold", y=0.99)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    fig.savefig(OUT_DIR / "pagination.png", facecolor=fig.get_facecolor(), bbox_inches="tight")
     plt.close(fig)
 
 
@@ -350,6 +438,7 @@ def build_decision() -> None:
 def main() -> None:
     build_architecture()
     build_performance()
+    build_pagination()
     build_decision()
     print("Wrote:")
     for name in ("architecture.png", "performance.png", "decision.png"):

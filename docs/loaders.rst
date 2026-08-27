@@ -70,9 +70,10 @@ dependency). Falls back to the ``wiki`` field when ``text`` is empty.
 CMDBLoader
 ----------
 
-Loads Configuration Items from any CMDB class table. The most powerful
-loader - it can optionally traverse the relationship graph to show how
-CIs depend on each other.
+Loads Configuration Items from any CMDB class table. It can optionally
+traverse the relationship graph to show how CIs depend on each other, though
+for more than a handful of CIs :class:`~snowloader.RelationshipLoader` is the
+better tool. See below.
 
 .. code-block:: python
 

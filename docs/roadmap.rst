@@ -48,8 +48,8 @@ by four duplicates, the same four every run.
 v0.2 - Async, Attachments, Threaded Sync (Shipped 2026-04-28)
 --------------------------------------------------------------
 
-The v0.2 series shipped three big features and a series of robustness
-patches driven by real-world extractions. See :doc:`async`,
+The v0.2 series shipped three large features and a series of reliability
+fixes driven by real extractions. See :doc:`async`,
 :doc:`attachments`, and :doc:`concurrent` for usage details.
 
 **Headline features:**
@@ -65,7 +65,7 @@ patches driven by real-world extractions. See :doc:`async`,
   threaded sync extractions with per-thread ``requests.Session`` instances
   (matches the throughput of the async path, no ``aiohttp`` dependency)
 
-**Robustness improvements (across 0.2.1 through 0.2.5):**
+**Reliability fixes (across 0.2.1 through 0.2.5):**
 
 - HTTP 500 added to the default retryable status set on both sync and
   async paths (ServiceNow 500s are typically transient overload)
