@@ -132,6 +132,20 @@ and nothing told you. Upgrade.
   connections can share it. It is still importable from `snowloader` and from
   `snowloader.connection`; nothing needs changing.
 
+### Build
+
+- mypy now runs with `python_version = "3.12"` instead of 3.10. numpy ships
+  stubs written with PEP 695 `type` statements, which mypy refuses to parse at
+  3.10, and numpy reaches us through `llama-index-core`. Our 3.10 floor is
+  still enforced: ruff runs at `target-version = "py310"` and the CI matrix
+  runs the full suite on a real 3.10 interpreter.
+- The `dev` extra caps aiohttp below 3.14. aiohttp 3.14 changed
+  `ClientResponse.__init__` to require `stream_writer` and `aioresponses`
+  still builds one without it, so the async tests failed inside the mock
+  rather than in library code. The `async` and `all` extras are deliberately
+  left unpinned: snowloader itself runs correctly on aiohttp 3.14, verified
+  against a live instance with a full verified sweep.
+
 ### Documentation
 
 - New page, `docs/verification.rst`: what the ordering bug was, the numbers it

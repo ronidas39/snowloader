@@ -45,7 +45,12 @@ all = [
     "llama-index-core>=0.11.0",
 ]
 dev = [
-    "aiohttp>=3.9.0",
+    # aiohttp is capped for the test environment only, not for users. aiohttp
+    # 3.14 changed ClientResponse.__init__ to require stream_writer, and
+    # aioresponses (0.7.9, the latest) still builds one without it, so every
+    # async test errors on the mock rather than on our code. The async and all
+    # extras stay unpinned so installs are free to use 3.14.
+    "aiohttp>=3.9.0,<3.14",
     "aioresponses>=0.7.6",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.23.0",
@@ -93,10 +98,16 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+# 3.12 rather than our 3.10 floor, because numpy ships stubs written with PEP
+# 695 "type" statements and mypy refuses to parse them at 3.10. numpy is not a
+# dependency of this package, it arrives through llama-index-core. Our own 3.10
+# compatibility is still enforced: ruff runs with target-version py310, and the
+# CI matrix runs the whole test suite on a real 3.10 interpreter.
+python_version = "3.12"
 strict = true
 packages = ["snowloader"]
 mypy_path = "src"
+
 
 [tool.coverage.run]
 source = ["snowloader"]
