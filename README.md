@@ -18,7 +18,7 @@
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&color=1a73e8" alt="PyPI version"></a>
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&color=4fc3f7" alt="Python versions"></a>
   <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-413%20passing-10b981.svg" alt="Tests"></a>
+  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-420%20passing-10b981.svg" alt="Tests"></a>
   <a href="https://peps.python.org/pep-0561/"><img src="https://img.shields.io/badge/typing-strict-1a73e8.svg" alt="Typed"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
@@ -51,7 +51,7 @@
     <td align="center"><b>9</b><br>loaders, each with<br>an async variant</td>
     <td align="center"><b>3</b><br>pagination paths:<br>sequential, threaded, async</td>
     <td align="center"><b>4</b><br>authentication<br>modes</td>
-    <td align="center"><b>413</b><br>unit tests, plus 21<br>against a live instance</td>
+    <td align="center"><b>420</b><br>unit tests, plus 21<br>against a live instance</td>
   </tr>
 </table>
 </div>

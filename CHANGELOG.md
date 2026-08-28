@@ -2,6 +2,23 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-08-28
+
+Documentation only. No code changed.
+
+### Fixed
+
+- The README and the documentation landing page both advertised 413 unit tests
+  when there were 418. The number is written by hand in four places and adding
+  a test touches none of them, so it drifts. The README is also the GitHub and
+  the PyPI page, and PyPI renders it from the uploaded distribution, so
+  correcting it there needs a release.
+
+  A test now reads the real count from pytest and compares it against every
+  figure the two pages quote, which is the same approach taken for
+  `__version__` in 0.6.1 after that drifted too. Both counts now read 420,
+  which includes the two tests holding them.
+
 ## [0.6.1] - 2026-08-28
 
 ### Fixed
