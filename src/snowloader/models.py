@@ -27,6 +27,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from snowloader.checkpoints import Checkpoint
 from snowloader.connection import SnowConnection, SnowConnectionError
 from snowloader.fields import display_value, expand_reference_keys, raw_value
 
@@ -125,6 +126,8 @@ class BaseSnowLoader:
         verify: bool = False,
         on_error: str = "raise",
         keyset: bool = False,
+        checkpoint: Checkpoint | None = None,
+        limit: int | None = None,
     ) -> list[SnowDocument]:
         """Fetch all matching records and return them as a list.
 
@@ -139,6 +142,9 @@ class BaseSnowLoader:
             on_error: ``"raise"`` (default) or ``"skip"``.
             keyset: Page on a sys_id cursor instead of an offset. See
                 :meth:`snowloader.SnowConnection.get_records`.
+            checkpoint: Somewhere to record how far the run got, so the call
+                can be continued. Requires ``keyset=True``.
+            limit: Stop after this many documents.
 
         Returns:
             List of SnowDocument instances, one per record.
@@ -147,7 +153,15 @@ class BaseSnowLoader:
             SweepIncompleteError: If ``verify`` is set and the sweep came up
                 short.
         """
-        return list(self.lazy_load(verify=verify, on_error=on_error, keyset=keyset))
+        return list(
+            self.lazy_load(
+                verify=verify,
+                on_error=on_error,
+                keyset=keyset,
+                checkpoint=checkpoint,
+                limit=limit,
+            )
+        )
 
     def lazy_load(
         self,
@@ -155,6 +169,8 @@ class BaseSnowLoader:
         verify: bool = False,
         on_error: str = "raise",
         keyset: bool = False,
+        checkpoint: Checkpoint | None = None,
+        limit: int | None = None,
     ) -> Generator[SnowDocument, None, None]:
         """Fetch records and yield them one at a time as SnowDocuments.
 
@@ -171,6 +187,12 @@ class BaseSnowLoader:
             on_error: ``"raise"`` (default) or ``"skip"``.
             keyset: Page on a sys_id cursor instead of an offset. See
                 :meth:`snowloader.SnowConnection.get_records`.
+            checkpoint: Somewhere to record how far the run got, so that
+                running the same call again continues rather than starting
+                over. Requires ``keyset=True``.
+            limit: Stop after this many documents. Pages stop being
+                requested once it is reached, so asking for five documents
+                costs one request rather than a sweep of the table.
 
         Yields:
             SnowDocument instances, one per ServiceNow record.
@@ -187,6 +209,8 @@ class BaseSnowLoader:
             verify=verify,
             on_error=on_error,
             keyset=keyset,
+            checkpoint=checkpoint,
+            limit=limit,
         )
 
         for record in records:
@@ -215,6 +239,7 @@ class BaseSnowLoader:
         max_workers: int = 16,
         verify: bool = False,
         on_error: str = "raise",
+        checkpoint: Checkpoint | None = None,
     ) -> Generator[SnowDocument, None, None]:
         """Fetch records in parallel and yield them as SnowDocuments.
 
@@ -256,6 +281,7 @@ class BaseSnowLoader:
             max_workers=max_workers,
             verify=verify,
             on_error=on_error,
+            checkpoint=checkpoint,
         )
 
         for record in records:
@@ -266,6 +292,7 @@ class BaseSnowLoader:
         max_workers: int = 16,
         verify: bool = False,
         on_error: str = "raise",
+        checkpoint: Checkpoint | None = None,
     ) -> list[SnowDocument]:
         """Fetch all matching records in parallel and return them as a list.
 
@@ -293,6 +320,7 @@ class BaseSnowLoader:
                 max_workers=max_workers,
                 verify=verify,
                 on_error=on_error,
+                checkpoint=checkpoint,
             )
         )
 

@@ -36,6 +36,8 @@ except ImportError as exc:
         "aiohttp is required for the async API. Install it with: pip install snowloader[async]"
     ) from exc
 
+from snowloader.checkpoints import Checkpoint
+from snowloader.checkpoints import fingerprint as _fingerprint
 from snowloader.exceptions import SnowConnectionError
 from snowloader.ordering import DEFAULT_ORDER_BY, OrderBy, normalise_order_by
 from snowloader.sweep import SweepTracker
@@ -564,6 +566,7 @@ class AsyncSnowConnection:
         verify: bool = False,
         on_error: str = "raise",
         concurrency: int | None = None,
+        checkpoint: Checkpoint | None = None,
     ) -> AsyncIterator[dict[str, object]]:
         """Stream records from a table with concurrent pagination.
 
@@ -585,15 +588,30 @@ class AsyncSnowConnection:
                 cannot be fetched. ``"skip"`` logs the page, leaves a gap and
                 lets the rest finish.
             concurrency: Override the connection's concurrency for this call.
+            checkpoint: Somewhere to record which pages finished, so that
+                running the same call again continues rather than starting
+                over. Like the threaded sync path, this one completes pages
+                out of order, so it records the set of offsets that finished
+                rather than a single furthest one. A page is recorded only
+                once every one of its records has been handed over, so an
+                interrupted run repeats a page rather than skipping it.
 
         Yields:
             One record dict at a time.
 
         Raises:
             SnowConnectionError: On count failure, any unrecoverable page
-                error, or an unknown ``on_error`` policy.
+                error, an unknown ``on_error`` policy, or a checkpoint
+                written by a different extraction.
             SweepIncompleteError: If ``verify`` is set and records went
                 missing or arrived twice.
+
+        Example:
+            >>> async with AsyncSnowConnection(...) as conn:
+            ...     async for rec in conn.aget_records(
+            ...         "incident", checkpoint=FileCheckpoint("inc.json")
+            ...     ):
+            ...         handle(rec)
         """
         if not table or not table.strip():
             raise SnowConnectionError("table name must not be empty.")
@@ -617,11 +635,35 @@ class AsyncSnowConnection:
             return
 
         page_count = (total + self.page_size - 1) // self.page_size
+
+        run_id = ""
+        done: set[int] = set()
+        if checkpoint is not None:
+            run_id = _fingerprint(
+                table=table,
+                query=full_query,
+                page_size=self.page_size,
+                mode="offset",
+                fields=fields,
+            )
+            saved = checkpoint.load(run_id)
+            if saved:
+                done = {int(o) for o in saved.get("completed_offsets", [])}
+                if done:
+                    logger.info(
+                        "Resuming async read of '%s': %d of %d pages already done",
+                        table,
+                        len(done),
+                        page_count,
+                    )
+
+        offsets = [i * self.page_size for i in range(page_count) if i * self.page_size not in done]
         logger.info(
-            "Async fetch from '%s': %d records, %d pages, concurrency=%d",
+            "Async fetch from '%s': %d records, %d pages (%d to fetch), concurrency=%d",
             table,
             total,
             page_count,
+            len(offsets),
             workers,
         )
 
@@ -631,8 +673,19 @@ class AsyncSnowConnection:
 
         sem = asyncio.Semaphore(workers)
 
-        async def fetch_page(offset: int) -> list[dict[str, object]] | None:
-            """Fetch one page, or return None when it was skipped."""
+        async def fetch_page(
+            offset: int,
+        ) -> tuple[int, list[dict[str, object]] | None]:
+            """Fetch one page.
+
+            Returns the offset alongside the records because
+            ``asyncio.as_completed`` yields wrapper awaitables rather than the
+            original tasks on Python 3.10 through 3.12, so there is no reliable
+            way to map a finished future back to the page it fetched. Carrying
+            the offset through the return value works on every supported
+            version. ``None`` in place of the records means the page was
+            skipped.
+            """
             async with sem:
                 page_params = dict(params)
                 page_params["sysparm_offset"] = str(offset)
@@ -648,16 +701,16 @@ class AsyncSnowConnection:
                         table,
                         exc,
                     )
-                    return None
+                    return offset, None
                 raw = data.get("result") if isinstance(data, dict) else None
                 if raw is None or not isinstance(raw, list):
-                    return []
-                return cast(list[dict[str, object]], raw)
+                    return offset, []
+                return offset, cast(list[dict[str, object]], raw)
 
-        tasks = [asyncio.create_task(fetch_page(i * self.page_size)) for i in range(page_count)]
+        tasks = [asyncio.create_task(fetch_page(offset)) for offset in offsets]
         try:
             for fut in asyncio.as_completed(tasks):
-                records = await fut
+                offset, records = await fut
                 if records is None:
                     if tracker:
                         tracker.page_failed()
@@ -667,6 +720,11 @@ class AsyncSnowConnection:
                         tracker.observe(record)
                 for rec in records:
                     yield rec
+                if checkpoint is not None:
+                    # Only once every record of the page has been handed over.
+                    # A page recorded before that could be skipped on resume.
+                    done.add(offset)
+                    checkpoint.save(run_id, {"completed_offsets": sorted(done)})
         finally:
             # A consumer that stops early, or a page that raised, leaves the
             # remaining tasks pending. Cancel them rather than leaking them
@@ -678,6 +736,11 @@ class AsyncSnowConnection:
                     task.cancel()
                 elif not task.cancelled():
                     task.exception()
+
+        # Only reached when the sweep ran to the end. A consumer that stopped
+        # early leaves the state in place, which is the whole point of it.
+        if checkpoint is not None:
+            checkpoint.clear()
 
         if tracker:
             tracker.check()
@@ -691,6 +754,7 @@ class AsyncSnowConnection:
         verify: bool = False,
         on_error: str = "raise",
         max_workers: int | None = None,
+        checkpoint: Checkpoint | None = None,
     ) -> AsyncIterator[dict[str, object]]:
         """Concurrent paginated read, named to match the sync API.
 
@@ -709,6 +773,8 @@ class AsyncSnowConnection:
             on_error: ``"raise"`` or ``"skip"``.
             max_workers: Override the connection's concurrency, named to
                 match the sync signature.
+            checkpoint: Somewhere to record which pages finished, so the run
+                can be continued. See :meth:`aget_records`.
 
         Returns:
             The same async iterator :meth:`aget_records` returns.
@@ -721,6 +787,7 @@ class AsyncSnowConnection:
             verify=verify,
             on_error=on_error,
             concurrency=max_workers,
+            checkpoint=checkpoint,
         )
 
     async def aget_record(self, table: str, sys_id: str) -> dict[str, object]:

@@ -45,8 +45,9 @@ This path requires ``keyset=True``. Plain offset paging is refused here, and
 the reason is worth stating: an offset only means something while the result
 set stays in the same order, which is not something a later run can rely on.
 
-**Threaded**, on :meth:`SnowConnection.concurrent_get_records`, remembers the
-set of page offsets that finished. That path completes pages out of order, so
+**Threaded**, on :meth:`SnowConnection.concurrent_get_records` and on the async
+:meth:`AsyncSnowConnection.aget_records`, remembers the set of page offsets
+that finished. That path completes pages out of order, so
 a single furthest offset would describe nothing useful. It records each offset
 only once every record of that page has been handed over.
 
@@ -56,6 +57,23 @@ only once every record of that page has been handed over.
        "incident",
        max_workers=16,
        checkpoint=FileCheckpoint("incident_sweep.json"),
+   )
+
+The async path takes the same argument:
+
+.. code-block:: python
+
+   async for record in conn.aget_records(
+       "incident", checkpoint=FileCheckpoint("incident_sweep.json")
+   ):
+       handle(record)
+
+And so do the loaders, which is where most people will reach for it:
+
+.. code-block:: python
+
+   IncidentLoader(connection=conn).load(
+       keyset=True, checkpoint=FileCheckpoint("incident_sweep.json")
    )
 
 

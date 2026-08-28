@@ -2,6 +2,64 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-08-28
+
+Everything in this release closes a hole between what the library could do and
+where you could reach it from. Nothing here is a new capability so much as an
+existing one finally available from the API people actually use.
+
+### Added
+
+- **`limit` on the loaders and on `get_records`.** There was no way to ask for
+  a few records. Every entry point swept the whole table, so the ordinary first
+  thing anyone does, pull five documents to see what the shape is, meant
+  reading an incident table that might hold half a million rows.
+
+  ```python
+  docs = IncidentLoader(connection=conn).load(limit=5)
+  ```
+
+  It stops requesting pages once the count is reached rather than filtering
+  after the fact, and a limit smaller than a page asks the instance for only
+  that many. Asking for five records costs one request.
+
+  It refuses to combine with `verify=True`. Verification compares what came
+  back against the table count, so a deliberately capped sweep would always
+  look short and the pairing could only ever raise a false alarm.
+
+- **`checkpoint` on the loaders.** Resume shipped in 0.4.0 but only on the raw
+  connection, so `IncidentLoader(...).load()` could not do it. Now on `load`,
+  `lazy_load`, `concurrent_load` and `concurrent_lazy_load`.
+
+- **`checkpoint` on `aget_records` and `aconcurrent_get_records`.** The async
+  path had the feature documented at it and not available. Like the threaded
+  sync path it completes pages out of order, so it records the set of offsets
+  that finished rather than a single furthest one, and a page is recorded only
+  once every one of its records has been handed over.
+
+- **`AsyncServiceNowTableLoader` and `AsyncServiceNowRelationshipLoader`** for
+  LangChain, and the matching `AsyncServiceNowTableReader` and
+  `AsyncServiceNowRelationshipReader` for LlamaIndex. Both frameworks had nine
+  sync adapters against seven async ones. The two missing were the generic
+  table reader and the relationship reader, which are exactly the two an async
+  user reaching past the six named tables would want. Both frameworks are now
+  nine and nine, and a test compares the two sets rather than a fixed list, so
+  a tenth loader added later fails until its async adapter exists too.
+
+### Fixed
+
+- A page shorter than requested ended the sequential sweep by comparing against
+  `page_size`. With a limit smaller than a page every page is short by that
+  measure, so the comparison is now against the size actually requested.
+
+### Notes
+
+413 unit tests, plus an end to end suite that runs against a live instance
+rather than mocks. That suite is new in this release and lives at
+`tests/integration/test_e2e_shipped.py`. It is what found the missing `limit`:
+the gap was invisible from the code and obvious the moment anyone tried to
+fetch five records to look at.
+
 ## [0.5.1] - 2026-08-28
 
 Documentation only. No code changed, and there is nothing to gain by upgrading

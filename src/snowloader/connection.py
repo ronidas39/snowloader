@@ -305,6 +305,7 @@ class SnowConnection:
         on_error: str = "raise",
         keyset: bool = False,
         checkpoint: Checkpoint | None = None,
+        limit: int | None = None,
     ) -> Generator[dict[str, object], None, None]:
         """Fetch records from a ServiceNow table with automatic pagination.
 
@@ -377,6 +378,7 @@ class SnowConnection:
             )
 
         self._check_on_error(on_error)
+        self._check_limit(limit, verify=verify)
         if verify:
             self._check_verifiable(fields)
         if keyset:
@@ -406,14 +408,18 @@ class SnowConnection:
                 expected=self.get_count(table, query=query, since=since),
             )
 
+        if limit == 0:
+            return
+
         offset = 0
         total_yielded = 0
         consecutive_failures = 0
 
         logger.info(
-            "Starting paginated fetch from '%s' (page_size=%d)",
+            "Starting paginated fetch from '%s' (page_size=%d, limit=%s)",
             table,
             self.page_size,
+            "none" if limit is None else limit,
         )
 
         cursor = ""
@@ -432,6 +438,12 @@ class SnowConnection:
                 logger.info("Resuming keyset read of '%s' after sys_id %s", table, cursor)
 
         while True:
+            if limit is not None:
+                remaining = limit - total_yielded
+                if remaining <= 0:
+                    break
+                params["sysparm_limit"] = str(min(self.page_size, remaining))
+
             url = f"{self.instance_url}/api/now/table/{table}"
             if keyset:
                 # Ask for the rows after the last one already seen, rather
@@ -482,10 +494,20 @@ class SnowConnection:
                 for record in records:
                     tracker.observe(record)
 
+            if limit is not None:
+                records = records[: limit - total_yielded]
+
             yield from records
             total_yielded += len(records)
 
-            if len(records) < self.page_size:
+            if limit is not None and total_yielded >= limit:
+                break
+
+            # A page shorter than what was asked for means the table ended.
+            # Compare against the size actually requested, not page_size,
+            # because a limit smaller than a page makes every page short.
+            requested = int(params.get("sysparm_limit", self.page_size))
+            if len(records) < requested:
                 break
 
             if keyset:
@@ -865,6 +887,35 @@ class SnowConnection:
                 detail=(
                     "'raise' aborts the sweep on the first unrecoverable page. "
                     "'skip' leaves a gap and carries on."
+                ),
+            )
+
+    @staticmethod
+    def _check_limit(limit: int | None, verify: bool) -> None:
+        """Reject a limit that cannot mean what the caller intended.
+
+        Args:
+            limit: Maximum records to return, or None for every match.
+            verify: Whether the caller also asked the sweep to prove itself.
+
+        Raises:
+            SnowConnectionError: If the limit is negative, or combined with
+                verification.
+        """
+        if limit is None:
+            return
+        if limit < 0:
+            raise SnowConnectionError(
+                f"limit must not be negative, got {limit}.",
+                detail="Use limit=0 for no records, or omit it to fetch every match.",
+            )
+        if verify:
+            raise SnowConnectionError(
+                "limit cannot be combined with verify.",
+                detail=(
+                    "Verification compares what came back against the table "
+                    "count, so a deliberately capped sweep would always look "
+                    "short. Drop one of the two."
                 ),
             )
 

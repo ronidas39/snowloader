@@ -187,6 +187,8 @@ try:
         AsyncIncidentLoader,
         AsyncKnowledgeBaseLoader,
         AsyncProblemLoader,
+        AsyncRelationshipLoader,
+        AsyncTableLoader,
     )
 except ImportError:
     pass
@@ -267,3 +269,13 @@ else:
         """Async LlamaIndex reader for ServiceNow attachments."""
 
         _loader_class = AsyncAttachmentLoader
+
+    class AsyncServiceNowRelationshipReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for CI relationships, one document per edge."""
+
+        _loader_class = AsyncRelationshipLoader
+
+    class AsyncServiceNowTableReader(_AsyncLlamaIndexAdapter):
+        """Async LlamaIndex reader for any table with no dedicated reader."""
+
+        _loader_class = AsyncTableLoader

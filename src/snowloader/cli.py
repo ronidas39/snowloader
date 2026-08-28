@@ -98,6 +98,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     extract.add_argument("--page-size", type=int, default=100, help="Records per request.")
     extract.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Stop after this many records. Useful for sampling a large table.",
+    )
+    extract.add_argument(
         "--workers",
         type=int,
         default=0,
@@ -185,6 +191,17 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         )
         return 2
 
+    if args.limit is not None and args.limit < 0:
+        logger.error("--limit must not be negative.")
+        return 2
+
+    verify = args.verify
+    if verify and args.limit is not None:
+        # Verification compares what came back against the table count, so a
+        # deliberately capped run would always look short.
+        logger.info("Not verifying, because --limit caps the sweep on purpose.")
+        verify = False
+
     checkpoint = FileCheckpoint(state_path) if args.resume else None
     threaded = args.workers > 0
 
@@ -196,17 +213,25 @@ def _cmd_extract(args: argparse.Namespace) -> int:
             "table": args.table,
             "query": args.query,
             "fields": args.fields,
-            "verify": args.verify,
+            "verify": verify,
             "on_error": "skip" if args.skip_failed_pages else "raise",
         }
         if threaded:
-            stream = conn.concurrent_get_records(
-                max_workers=args.workers, checkpoint=checkpoint, **shared
-            )
+            if args.limit is not None:
+                logger.info("Fetching sequentially, because --limit caps the run.")
+                stream = conn.get_records(
+                    keyset=bool(checkpoint), checkpoint=checkpoint, limit=args.limit, **shared
+                )
+            else:
+                stream = conn.concurrent_get_records(
+                    max_workers=args.workers, checkpoint=checkpoint, **shared
+                )
         else:
             # Keyset is what makes a sequential run resumable, and it costs
             # nothing when it is not.
-            stream = conn.get_records(keyset=bool(checkpoint), checkpoint=checkpoint, **shared)
+            stream = conn.get_records(
+                keyset=bool(checkpoint), checkpoint=checkpoint, limit=args.limit, **shared
+            )
 
         mode = "a" if (args.resume and out.exists() and not args.overwrite) else "w"
         written = 0
@@ -225,7 +250,9 @@ def _cmd_extract(args: argparse.Namespace) -> int:
             return 1
 
     logger.info("Wrote %d records to %s", written, out)
-    if args.verify:
+    if args.limit is not None:
+        logger.info("Capped at %d by --limit, so this is a sample not a full extract.", args.limit)
+    elif verify:
         logger.info("Verified: every record present exactly once.")
     else:
         logger.warning(

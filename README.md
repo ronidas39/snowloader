@@ -18,7 +18,7 @@
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&color=1a73e8" alt="PyPI version"></a>
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&color=4fc3f7" alt="Python versions"></a>
   <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-389%20passing-10b981.svg" alt="Tests"></a>
+  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-413%20passing-10b981.svg" alt="Tests"></a>
   <a href="https://peps.python.org/pep-0561/"><img src="https://img.shields.io/badge/typing-strict-1a73e8.svg" alt="Typed"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
@@ -51,7 +51,7 @@
     <td align="center"><b>9</b><br>loaders, each with<br>an async variant</td>
     <td align="center"><b>3</b><br>pagination paths:<br>sequential, threaded, async</td>
     <td align="center"><b>4</b><br>authentication<br>modes</td>
-    <td align="center"><b>389</b><br>unit tests, plus 21<br>against a live instance</td>
+    <td align="center"><b>413</b><br>unit tests, plus 21<br>against a live instance</td>
   </tr>
 </table>
 </div>
@@ -278,6 +278,8 @@ loader.concurrent_lazy_load(...)      # threaded generator
 loader.load(verify=True)              # raises if the sweep lost records
 loader.load(on_error="skip")          # finish past a dead page instead of aborting
 loader.load(keyset=True)              # cursor paging, no offsets
+loader.load(limit=5)                  # just enough to look at, one request
+loader.load(keyset=True, checkpoint=FileCheckpoint("state.json"))   # resumable
 ```
 
 On the connection, a long sweep can be made resumable:
@@ -300,7 +302,7 @@ And the same work from a shell:
 
 Credentials come from `SNOW_INSTANCE`, `SNOW_USER` and `SNOW_PASS` when the matching option is not given, so a password need not reach a shell history or a process list. Exit status is 0 when the sweep finished and verified, 1 when it did not return every record, 2 on a usage or credential problem, and 130 when interrupted.
 
-Async siblings (when installed with `[async]`) follow the same shape: `aload`, `alazy_load`, `aload_since`.
+Async siblings (when installed with `[async]`) follow the same shape: `aload`, `alazy_load`, `aload_since`. Every loader has one, and so does every LangChain and LlamaIndex adapter.
 
 Document metadata carries both halves of every reference field, so a record can be joined to what it points at:
 
@@ -735,6 +737,11 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
   <tr>
     <td><strong>v0.5</strong></td>
     <td>Command line: <code>snowloader extract</code> and <code>snowloader count</code>, with the careful choices as defaults</td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
+  </tr>
+  <tr>
+    <td><strong>v0.6</strong></td>
+    <td><code>limit</code> on every loader, <code>checkpoint</code> on the loaders and the async path, and async adapters for the last two loaders</td>
     <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
   </tr>
   <tr>

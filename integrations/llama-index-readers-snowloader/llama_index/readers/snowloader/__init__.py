@@ -27,6 +27,8 @@ try:
         AsyncServiceNowIncidentReader,
         AsyncServiceNowKBReader,
         AsyncServiceNowProblemReader,
+        AsyncServiceNowRelationshipReader,
+        AsyncServiceNowTableReader,
     )
 
     _ASYNC_EXPORTS = [
@@ -37,6 +39,8 @@ try:
         "AsyncServiceNowIncidentReader",
         "AsyncServiceNowKBReader",
         "AsyncServiceNowProblemReader",
+        "AsyncServiceNowRelationshipReader",
+        "AsyncServiceNowTableReader",
     ]
 except ImportError:
     _ASYNC_EXPORTS = []

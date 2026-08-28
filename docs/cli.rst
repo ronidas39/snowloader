@@ -137,6 +137,7 @@ Options
 ``--fields``             Comma separated. Every field by default
 ``--display-value``      ``true``, ``false`` or ``all``
 ``--page-size``          Records per request. Default 100
+``--limit N``            Stop after N records. For sampling, not extraction
 ``--workers N``          Fetch pages with N threads. Sequential by default
 ``--resume``             Continue a previous run, and record this one
 ``--no-verify``          Skip the completeness check
@@ -144,3 +145,22 @@ Options
 ``--overwrite``          Replace the output file
 ``--quiet``              Warnings and errors only
 ======================== ==================================================
+
+
+Sampling a table
+----------------
+
+``--limit`` stops after a set number of records, which is the quickest way to
+see what a table actually contains before committing to a full pull:
+
+.. code-block:: bash
+
+   snowloader extract incident --out sample.jsonl --limit 100 --display-value all
+
+Pages stop being requested once the count is reached, so this costs one request
+rather than a sweep.
+
+A capped run does not verify itself, and says so in the log. Verification
+compares what came back against the number of records the instance reports, and
+a run that was told to stop early will always look short by that measure. The
+output is a sample. Do not treat it as an extract.

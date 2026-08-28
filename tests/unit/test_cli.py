@@ -307,3 +307,37 @@ def test_resume_with_overwrite_starts_afresh(tmp_path: Path) -> None:
     assert code == 0
     assert "stale" not in out.read_text()
     assert len(out.read_text().splitlines()) == 2
+
+
+def test_extract_accepts_a_limit(tmp_path: Path) -> None:
+    """Sampling a big table without pulling all of it."""
+    out = tmp_path / "sample.jsonl"
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        rsps.add(
+            responses.GET,
+            f"{STATS_API}/incident",
+            json={"result": {"stats": {"count": "5000"}}},
+            status=200,
+        )
+        rsps.add(responses.GET, INCIDENT, json={"result": _rows(0, 25)}, status=200)
+        code = main([*CREDS, "extract", "incident", "--out", str(out), "--limit", "25"])
+
+    assert code == 0
+    assert len(out.read_text().splitlines()) == 25
+
+
+def test_a_limited_extract_does_not_claim_to_be_verified(tmp_path: Path) -> None:
+    """A capped sweep cannot be checked against the table count, so it must not
+    exit non-zero for being short, nor report itself as complete."""
+    out = tmp_path / "sample.jsonl"
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        rsps.add(
+            responses.GET,
+            f"{STATS_API}/incident",
+            json={"result": {"stats": {"count": "5000"}}},
+            status=200,
+        )
+        rsps.add(responses.GET, INCIDENT, json={"result": _rows(0, 10)}, status=200)
+        code = main([*CREDS, "extract", "incident", "--out", str(out), "--limit", "10"])
+
+    assert code == 0

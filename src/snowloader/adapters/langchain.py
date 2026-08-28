@@ -158,6 +158,8 @@ try:
         AsyncIncidentLoader,
         AsyncKnowledgeBaseLoader,
         AsyncProblemLoader,
+        AsyncRelationshipLoader,
+        AsyncTableLoader,
     )
 except ImportError:
     pass
@@ -229,3 +231,13 @@ else:
         """Async LangChain loader for ServiceNow attachments."""
 
         _loader_class = AsyncAttachmentLoader
+
+    class AsyncServiceNowRelationshipLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for CI relationships, one document per edge."""
+
+        _loader_class = AsyncRelationshipLoader
+
+    class AsyncServiceNowTableLoader(_AsyncLangChainAdapter):
+        """Async LangChain loader for any table with no dedicated loader."""
+
+        _loader_class = AsyncTableLoader
