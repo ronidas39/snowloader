@@ -120,7 +120,12 @@ class BaseSnowLoader:
         self._expand_references = expand_references
         self._include_raw = include_raw
 
-    def load(self, verify: bool = False, on_error: str = "raise") -> list[SnowDocument]:
+    def load(
+        self,
+        verify: bool = False,
+        on_error: str = "raise",
+        keyset: bool = False,
+    ) -> list[SnowDocument]:
         """Fetch all matching records and return them as a list.
 
         This is the simple, non-streaming interface. Under the hood it
@@ -132,6 +137,8 @@ class BaseSnowLoader:
                 instance reports. See
                 :meth:`snowloader.SnowConnection.get_records`.
             on_error: ``"raise"`` (default) or ``"skip"``.
+            keyset: Page on a sys_id cursor instead of an offset. See
+                :meth:`snowloader.SnowConnection.get_records`.
 
         Returns:
             List of SnowDocument instances, one per record.
@@ -140,13 +147,14 @@ class BaseSnowLoader:
             SweepIncompleteError: If ``verify`` is set and the sweep came up
                 short.
         """
-        return list(self.lazy_load(verify=verify, on_error=on_error))
+        return list(self.lazy_load(verify=verify, on_error=on_error, keyset=keyset))
 
     def lazy_load(
         self,
         since: datetime | None = None,
         verify: bool = False,
         on_error: str = "raise",
+        keyset: bool = False,
     ) -> Generator[SnowDocument, None, None]:
         """Fetch records and yield them one at a time as SnowDocuments.
 
@@ -161,6 +169,8 @@ class BaseSnowLoader:
             verify: Raise if the sweep did not return every record the
                 instance reports.
             on_error: ``"raise"`` (default) or ``"skip"``.
+            keyset: Page on a sys_id cursor instead of an offset. See
+                :meth:`snowloader.SnowConnection.get_records`.
 
         Yields:
             SnowDocument instances, one per ServiceNow record.
@@ -176,6 +186,7 @@ class BaseSnowLoader:
             since=since,
             verify=verify,
             on_error=on_error,
+            keyset=keyset,
         )
 
         for record in records:

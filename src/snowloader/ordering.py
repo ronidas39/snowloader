@@ -28,6 +28,10 @@ UNIQUE_SORT_KEY = "sys_id"
 
 _ORDER_PREFIXES = ("ORDERBYDESC", "ORDERBY")
 
+#: The clause keyset pagination pages over. A cursor is a single value, so the
+#: order it walks has to be the single unique column.
+KEYSET_ORDER: tuple[str, ...] = (f"ORDERBY{UNIQUE_SORT_KEY}",)
+
 OrderBy = str | Sequence[str] | None
 
 
@@ -114,3 +118,22 @@ def normalise_order_by(order_by: OrderBy) -> tuple[str, ...]:
         clauses.append(f"ORDERBY{UNIQUE_SORT_KEY}")
 
     return tuple(clauses)
+
+
+def is_keyset_compatible(order_by: OrderBy) -> bool:
+    """Report whether an ordering can be walked with a single value cursor.
+
+    True for the default, because a caller who never set one has expressed no
+    preference for keyset to override. True for an ordering that already
+    resolves to ``sys_id`` alone. False for anything else, since a cursor over
+    one column cannot resume a sort by another.
+
+    Args:
+        order_by: The connection's configured ordering.
+
+    Returns:
+        True when keyset pagination may take the ordering over.
+    """
+    if order_by == DEFAULT_ORDER_BY:
+        return True
+    return normalise_order_by(order_by) == KEYSET_ORDER

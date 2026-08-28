@@ -31,7 +31,14 @@ from typing import Any, cast
 import requests
 
 from snowloader.exceptions import SnowConnectionError, SweepIncompleteError
-from snowloader.ordering import DEFAULT_ORDER_BY, OrderBy, normalise_order_by
+from snowloader.fields import raw_value
+from snowloader.ordering import (
+    DEFAULT_ORDER_BY,
+    KEYSET_ORDER,
+    OrderBy,
+    is_keyset_compatible,
+    normalise_order_by,
+)
 from snowloader.sweep import SweepReport, SweepTracker
 
 logger = logging.getLogger(__name__)
@@ -294,6 +301,7 @@ class SnowConnection:
         since: datetime | None = None,
         verify: bool = False,
         on_error: str = "raise",
+        keyset: bool = False,
     ) -> Generator[dict[str, object], None, None]:
         """Fetch records from a ServiceNow table with automatic pagination.
 
@@ -319,6 +327,25 @@ class SnowConnection:
                 cannot be fetched. ``"skip"`` logs the page, leaves a gap
                 and carries on, which is what an unattended run usually
                 wants. Combine it with ``verify=True`` to still find out.
+            keyset: Page on a ``sys_id`` cursor instead of an offset, asking
+                for the rows after a remembered position.
+
+                Reach for this when a run needs to be resumable, or restarted
+                after a failure, because the whole position is one value you
+                can write down. It is also immune to the tied sort problem by
+                construction rather than by remembering to sort correctly.
+
+                Do not reach for it expecting speed. It is sequential, so the
+                threaded paginator is faster on any table that fits in offset
+                range. Deep offsets are widely reported to cost more than
+                shallow ones, which would favour keyset on a very large table,
+                but that was not reproducible on a developer instance: at
+                2,919 rows a page at offset 2,800 took the same time as one at
+                offset 0. Treat the depth argument as unproven at that scale
+                and measure your own table before choosing on those grounds.
+
+                It sorts by ``sys_id`` and cannot be combined with a deliberate
+                ``order_by``.
 
         Yields:
             Individual record dicts straight from the ServiceNow response.
@@ -342,8 +369,12 @@ class SnowConnection:
         self._check_on_error(on_error)
         if verify:
             self._check_verifiable(fields)
+        if keyset:
+            self._check_keyset(fields)
 
-        params = self._build_query_params(query=query, fields=fields, since=since)
+        params = self._build_query_params(
+            query=query, fields=fields, since=since, order=KEYSET_ORDER if keyset else None
+        )
         full_query = params.get("sysparm_query")
 
         tracker: SweepTracker | None = None
@@ -364,9 +395,17 @@ class SnowConnection:
             self.page_size,
         )
 
+        cursor = ""
         while True:
-            params["sysparm_offset"] = str(offset)
             url = f"{self.instance_url}/api/now/table/{table}"
+            if keyset:
+                # Ask for the rows after the last one already seen, rather
+                # than asking the instance to count past them.
+                params["sysparm_query"] = self._keyset_query(
+                    query=query, since=since, cursor=cursor
+                )
+            else:
+                params["sysparm_offset"] = str(offset)
 
             try:
                 response_data = self._request("GET", url, params=params)
@@ -414,13 +453,35 @@ class SnowConnection:
             if len(records) < self.page_size:
                 break
 
-            offset += self.page_size
-            logger.debug(
-                "Fetched page (offset=%d, records=%d, total_so_far=%d)",
-                offset,
-                len(records),
-                total_yielded,
-            )
+            if keyset:
+                nxt = raw_value(records[-1].get("sys_id"))
+                if not nxt or nxt == cursor:
+                    # Without a readable sys_id the cursor cannot move, and the
+                    # identical request would repeat until something gave out.
+                    raise SnowConnectionError(
+                        f"Keyset read of '{table}' could not advance its cursor "
+                        f"past {cursor or 'the start'}.",
+                        detail=(
+                            "The last record of the page carried no usable "
+                            "sys_id, so the next request would repeat this one. "
+                            "Check that sys_id is present in the response."
+                        ),
+                    )
+                cursor = nxt
+                logger.debug(
+                    "Fetched page (cursor=%s, records=%d, total_so_far=%d)",
+                    cursor,
+                    len(records),
+                    total_yielded,
+                )
+            else:
+                offset += self.page_size
+                logger.debug(
+                    "Fetched page (offset=%d, records=%d, total_so_far=%d)",
+                    offset,
+                    len(records),
+                    total_yielded,
+                )
 
         logger.info("Completed fetch from '%s': %d records total.", table, total_yielded)
 
@@ -726,6 +787,31 @@ class SnowConnection:
                 ),
             )
 
+    def _check_keyset(self, fields: list[str] | None) -> None:
+        """Refuse a keyset read that cannot work before any request goes out.
+
+        Raises:
+            SnowConnectionError: If sys_id was projected away, or the
+                connection is deliberately sorted by something else.
+        """
+        if fields and "sys_id" not in fields:
+            raise SnowConnectionError(
+                "keyset=True needs 'sys_id' in the requested fields.",
+                detail=(
+                    "Keyset pagination reads the next cursor out of the last "
+                    "record of each page. Add 'sys_id' to fields."
+                ),
+            )
+        if not is_keyset_compatible(self.order_by):
+            raise SnowConnectionError(
+                f"keyset=True cannot honour order_by={self.order_by!r}.",
+                detail=(
+                    "A keyset cursor is one value, so it can only walk the "
+                    "column it sorts by, which is sys_id. Either drop the "
+                    "custom order_by, set it to 'sys_id', or page by offset."
+                ),
+            )
+
     @staticmethod
     def _check_verifiable(fields: list[str] | None) -> None:
         """Refuse to verify a sweep whose primary key was projected away.
@@ -745,11 +831,43 @@ class SnowConnection:
                 ),
             )
 
+    def _keyset_query(
+        self,
+        query: str | None,
+        since: datetime | None,
+        cursor: str,
+    ) -> str:
+        """Assemble the encoded query for one page of a keyset read.
+
+        The caller's filter comes first, then the cursor, then the sort. The
+        cursor clause is omitted on the first page, where there is nothing to
+        be after yet.
+
+        Args:
+            query: User-supplied encoded query, or None.
+            since: Delta sync cutoff timestamp, or None.
+            cursor: sys_id of the last record already seen, or "" to start.
+
+        Returns:
+            The encoded query string for this page.
+        """
+        parts: list[str] = []
+        if query:
+            parts.append(query)
+        if since:
+            timestamp = since.strftime(_SINCE_TIMESTAMP_FORMAT)
+            parts.append(f"{self.since_field}>{timestamp}")
+        if cursor:
+            parts.append(f"sys_id>{cursor}")
+        parts.extend(KEYSET_ORDER)
+        return "^".join(parts)
+
     def _build_query_params(
         self,
         query: str | None = None,
         fields: list[str] | None = None,
         since: datetime | None = None,
+        order: tuple[str, ...] | None = None,
     ) -> dict[str, str]:
         """Assemble the sysparm_* query parameters for a table request.
 
@@ -761,6 +879,8 @@ class SnowConnection:
             query: User-supplied encoded query, or None.
             fields: List of field names to request, or None for all.
             since: Delta sync cutoff timestamp, or None.
+            order: Ordering to use in place of the connection's own, for a
+                caller such as keyset pagination that dictates its own sort.
 
         Returns:
             Dict of query parameter key-value pairs.
@@ -777,7 +897,7 @@ class SnowConnection:
             timestamp = since.strftime(_SINCE_TIMESTAMP_FORMAT)
             query_parts.append(f"{self.since_field}>{timestamp}")
 
-        query_parts.extend(self._order_clauses)
+        query_parts.extend(self._order_clauses if order is None else order)
 
         if query_parts:
             params["sysparm_query"] = "^".join(query_parts)
