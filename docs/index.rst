@@ -16,14 +16,15 @@ snowloader
      <div class="snow-badges">
        <a href="https://pypi.org/project/snowloader/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&amp;color=1a73e8"></a>
        <a href="https://pypi.org/project/snowloader/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&amp;color=4fc3f7"></a>
-       <a href="https://snowloader.readthedocs.io"><img alt="Tests" src="https://img.shields.io/badge/tests-346%20passing-10b981.svg"></a>
+       <a href="https://snowloader.readthedocs.io"><img alt="Tests" src="https://img.shields.io/badge/tests-389%20passing-10b981.svg"></a>
        <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg"></a>
        <a href="https://opensource.org/licenses/MIT"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
        <a href="https://peps.python.org/pep-0561/"><img alt="Typed" src="https://img.shields.io/badge/typing-strict-1a73e8.svg"></a>
      </div>
      <div class="snow-cta">
        <a class="snow-cta-primary" href="getting-started.html">Get started</a>
-       <a href="verification.html">Why 0.3.0 matters</a>
+       <a href="cli.html">Command line</a>
+       <a href="verification.html">How it verifies</a>
        <a href="api.html">API reference</a>
        <a href="https://github.com/ronidas39/snowloader">Source</a>
      </div>
@@ -43,17 +44,29 @@ snowloader
 Three lines to a list of documents, and ``verify=True`` means the load raises
 rather than handing back a quietly incomplete extract.
 
+Or without writing any Python at all:
+
+.. code-block:: bash
+
+   snowloader extract incident --out incidents.jsonl \
+       --query "stateIN6,7^close_notesISNOTEMPTY" \
+       --display-value all --resume
+
+Run it, kill it, run it again and it continues from where it stopped. It exits
+non-zero if the sweep did not return every record, so an unattended job finds
+out. See :doc:`cli`.
+
 .. raw:: html
 
    <div class="snow-stats">
      <div class="snow-stat"><span class="snow-stat-value">9</span><span class="snow-stat-label">loaders, each with an async variant</span></div>
-     <div class="snow-stat"><span class="snow-stat-value">3</span><span class="snow-stat-label">pagination paths: sequential, threaded, async</span></div>
+     <div class="snow-stat"><span class="snow-stat-value">4</span><span class="snow-stat-label">pagination paths: sequential, threaded, async, keyset</span></div>
      <div class="snow-stat"><span class="snow-stat-value">4</span><span class="snow-stat-label">authentication modes</span></div>
-     <div class="snow-stat"><span class="snow-stat-value">346</span><span class="snow-stat-label">unit tests, plus 21 against a live instance</span></div>
+     <div class="snow-stat"><span class="snow-stat-value">389</span><span class="snow-stat-label">unit tests, plus 21 against a live instance</span></div>
    </div>
 
-The bug that 0.3.0 exists for
------------------------------
+The bug this package exists for
+-------------------------------
 
 ServiceNow does not guarantee a stable row order inside a group of rows that
 tie on the sort column. Every release before 0.3.0 paged over
@@ -97,6 +110,20 @@ What you get
        <code>SweepIncompleteError</code> rather than returning an incomplete extract
        that looks fine. Free on the threaded and async paths.</p>
      </div>
+     <div class="snow-card snow-card-alert">
+       <span class="snow-kicker">no python needed</span>
+       <h3>A command that does it properly</h3>
+       <p><code>snowloader extract</code> makes the careful choices the defaults:
+       ordering that cannot lose rows, verification on unless switched off, and a
+       non-zero exit when a sweep came back short.</p>
+     </div>
+     <div class="snow-card">
+       <span class="snow-kicker">long jobs</span>
+       <h3>Resume where it stopped</h3>
+       <p>A checkpoint records how far a run reached, so an interrupted sweep of
+       half a million records costs you the page it was inside rather than the whole
+       job. It repeats rather than drops, by design.</p>
+     </div>
      <div class="snow-card">
        <span class="snow-kicker">graph ready</span>
        <h3>Both halves of every field</h3>
@@ -113,10 +140,11 @@ What you get
      </div>
      <div class="snow-card">
        <span class="snow-kicker">throughput</span>
-       <h3>Three pagination paths</h3>
-       <p>Sequential, threaded and async. The threaded sweep measured about seven
-       times the sequential one on a developer instance, and the docs carry the
-       measured tables rather than estimates.</p>
+       <h3>Four pagination paths</h3>
+       <p>Sequential, threaded, async, and a <code>keyset=True</code> cursor that
+       survives a restart. The threaded sweep measured about seven times the
+       sequential one on a developer instance, and the docs carry the measured
+       tables rather than estimates.</p>
      </div>
      <div class="snow-card">
        <span class="snow-kicker">unattended</span>

@@ -2,6 +2,29 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-08-28
+
+Documentation only. No code changed, and there is nothing to gain by upgrading
+if you are already on 0.5.0.
+
+### Changed
+
+- The README, which is also the GitHub and PyPI front page, still described
+  0.3.0. It never mentioned the command line at all, and its roadmap listed
+  keyset pagination and resume as planned when both had shipped. PyPI renders
+  the README from the uploaded distribution rather than from the repository, so
+  correcting it needs a release. That is the whole reason for this one.
+
+- Replaced the large-scale extraction recipe. The old one ended its query on
+  `sys_created_on`, which is the non-unique sort this package exists to avoid;
+  it read a state file into a variable it then never used, so it did not
+  actually resume; and it checked itself by comparing a line count against the
+  API count, which is the one check that cannot detect the loss it was meant to
+  catch. It now shows the command and the real checkpoint API.
+
+- The documentation landing page carries the command line and resume alongside
+  the pagination story, rather than only the pagination story.
+
 ## [0.5.0] - 2026-08-28
 
 ### Added

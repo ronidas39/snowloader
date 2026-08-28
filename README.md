@@ -18,7 +18,7 @@
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&color=1a73e8" alt="PyPI version"></a>
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&color=4fc3f7" alt="Python versions"></a>
   <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-346%20passing-10b981.svg" alt="Tests"></a>
+  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-389%20passing-10b981.svg" alt="Tests"></a>
   <a href="https://peps.python.org/pep-0561/"><img src="https://img.shields.io/badge/typing-strict-1a73e8.svg" alt="Typed"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
@@ -51,34 +51,50 @@
     <td align="center"><b>9</b><br>loaders, each with<br>an async variant</td>
     <td align="center"><b>3</b><br>pagination paths:<br>sequential, threaded, async</td>
     <td align="center"><b>4</b><br>authentication<br>modes</td>
-    <td align="center"><b>346</b><br>unit tests, plus 21<br>against a live instance</td>
+    <td align="center"><b>389</b><br>unit tests, plus 21<br>against a live instance</td>
   </tr>
 </table>
 </div>
 
 ---
 
-## In three lines
+## Two ways in
+
+**From a shell, one command.** Resumable, and it checks its own work:
+
+```bash
+pip install snowloader
+
+export SNOW_INSTANCE=https://yourcompany.service-now.com
+export SNOW_USER=api_user
+export SNOW_PASS=...
+
+snowloader extract incident --out incidents.jsonl \
+    --query "stateIN6,7^close_notesISNOTEMPTY" \
+    --fields sys_id,number,close_notes --display-value all --resume
+```
+
+Run it, kill it, run it again and it continues. It exits non-zero if the sweep did not return every record, so an unattended job finds out.
+
+**From Python, three lines.** The same loader objects work with LangChain, LlamaIndex, or anything else that takes a list of dicts:
 
 ```python
 from snowloader import SnowConnection, IncidentLoader
 
 with SnowConnection(instance_url="https://yourcompany.service-now.com",
                     username="api_user", password="api_pass") as conn:
-    docs = IncidentLoader(connection=conn, query="active=true").load()
+    docs = IncidentLoader(connection=conn, query="active=true").load(verify=True)
 ```
-
-Three lines from a ServiceNow instance to a list of documents your vector store understands. The same loader objects work with LangChain, LlamaIndex, or anything else that accepts a list of dicts.
 
 ---
 
-## What 0.3.0 fixes
+## The problem it solves
 
 ServiceNow does not guarantee a stable row order inside a group of rows that tie on the sort column. Every release before 0.3.0 paged over `sys_created_on`, which is not unique, so a page boundary landing inside a tied group returned some rows twice and skipped others.
 
 The returned count still matched, so nothing reported a problem. The loss was identical on every run, so re-running never revealed it. Measured on a developer instance where `cmdb_ci` holds 2,919 rows across only 818 distinct timestamps, three consecutive sweeps each returned 2,919 rows and only 2,915 of them were distinct.
 
-Every ORDERBY chain now ends in `sys_id`, and you can ask a sweep to prove it was complete:
+Every ORDERBY chain ends in `sys_id`, so that boundary cannot fall inside a tie, and you can ask a sweep to prove it was complete:
 
 ```python
 records = list(conn.get_records("cmdb_ci", verify=True))   # raises if anything is missing
@@ -90,13 +106,19 @@ The second thing it fixes is that a document could not be joined to anything. Th
   <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/references.png" alt="Incident metadata before and after 0.3.0" width="960">
 </p>
 
-Details in [the upgrade notes](#upgrading-to-030).
+A long sweep can also be interrupted and continued. Ordering, verification and resume are the three things that were being assembled by hand and getting quietly wrong, so 0.5.0 made them the defaults of a command:
+
+```bash
+snowloader extract cmdb_ci --out cmdb.jsonl --resume --workers 16
+```
+
+Details in [the upgrade notes](#upgrading-from-02x).
 
 ---
 
-## Upgrading to 0.3.0
+## Upgrading from 0.2.x
 
-**0.3.0 fixes a data loss bug. If you are on 0.2.x, upgrade.**
+**0.3.0 fixed a data loss bug. If you are still on 0.2.x, upgrade.**
 
 ServiceNow offset pagination is only safe over a unique sort key. The API does not guarantee a stable order inside a group of rows that tie on the sort column, so a page boundary landing inside a tied group returns some rows twice and skips others. Every release before 0.3.0 sorted on `sys_created_on`, which is not unique.
 
@@ -147,48 +169,62 @@ Building RAG or agentic AI on top of ServiceNow data. snowloader covers the core
       <code>verify=True</code> counts the table first and raises rather than handing back an incomplete extract that looks fine.
     </td>
     <td width="33%" valign="top">
+      <h3>Runs from a shell</h3>
+      <code>snowloader extract</code> and <code>snowloader count</code>. The careful choices are the defaults, and an incomplete sweep exits non-zero.
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
+      <h3>Resume where it stopped</h3>
+      A checkpoint records how far a run reached, so killing a half-million-row sweep costs you the current page rather than the whole job.
+    </td>
+    <td width="33%" valign="top">
+      <h3>Four pagination paths</h3>
+      Sequential <code>get_records</code>, threaded <code>concurrent_get_records</code>, async <code>aget_records</code>, and <code>keyset=True</code> for a cursor that survives a restart.
+    </td>
+    <td width="33%" valign="top">
       <h3>Nine loaders</h3>
       Incidents, Knowledge Base, CMDB, Changes, Problems, Catalog, Attachments, CI relationships, and a generic <code>TableLoader</code> for anything else.
     </td>
   </tr>
   <tr>
-    <td valign="top">
-      <h3>Three pagination paths</h3>
-      Sequential <code>get_records</code>, threaded <code>concurrent_get_records</code>, async <code>aget_records</code>. Pick the one that fits your runtime.
-    </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Four auth modes</h3>
       Basic, OAuth Password, OAuth Client Credentials, Bearer Token. Switching is a constructor argument.
     </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Both halves of every field</h3>
       The readable label and the sys_id you join on, side by side in metadata. No helper to write yourself.
     </td>
-  </tr>
-  <tr>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Delta sync</h3>
       <code>load_since(datetime)</code> on every loader. Only fetch what changed since your last run.
     </td>
-    <td valign="top">
+  </tr>
+  <tr>
+    <td width="33%" valign="top">
       <h3>CMDB graph walking</h3>
       Sweep <code>cmdb_rel_ci</code> once for every edge, or traverse per CI when you only need a few.
     </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Streaming everywhere</h3>
       Generators and async iterators throughout. The full table never lives in memory at once.
     </td>
+    <td width="33%" valign="top">
+      <h3>Carries on past a bad page</h3>
+      <code>on_error="skip"</code> finishes the sweep when one page will not fetch, and tells you at the end exactly which records are missing.
+    </td>
   </tr>
   <tr>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Built-in HTML cleaner</h3>
       KB articles arrive as plain text. No BeautifulSoup, no extra dependencies.
     </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Tested against a live instance</h3>
       Retry with backoff, rate limiting, thread-safe sessions, proxy support, custom CA bundles.
     </td>
-    <td valign="top">
+    <td width="33%" valign="top">
       <h3>Strict typing</h3>
       PEP 561 marker, <code>mypy --strict</code> clean, full type hints on every public surface.
     </td>
@@ -241,7 +277,28 @@ loader.concurrent_lazy_load(...)      # threaded generator
 
 loader.load(verify=True)              # raises if the sweep lost records
 loader.load(on_error="skip")          # finish past a dead page instead of aborting
+loader.load(keyset=True)              # cursor paging, no offsets
 ```
+
+On the connection, a long sweep can be made resumable:
+
+```python
+conn.get_records("cmdb_ci", keyset=True, checkpoint=FileCheckpoint("sweep.json"))
+conn.concurrent_get_records("incident", max_workers=16, checkpoint=FileCheckpoint("inc.json"))
+```
+
+And the same work from a shell:
+
+| Command | Does |
+|---|---|
+| `snowloader count <table>` | Prints how many records match, and stops |
+| `snowloader extract <table> --out f.jsonl` | Sweeps the table to JSONL, verifying as it goes |
+| `... --resume` | Continues an interrupted run, and records progress so this one can be continued |
+| `... --workers 16` | Fetches pages in parallel instead of sequentially |
+| `... --display-value all` | Keeps both halves of every field in the raw output |
+| `... --skip-failed-pages` | Carries on past a page that will not fetch, and reports the gap |
+
+Credentials come from `SNOW_INSTANCE`, `SNOW_USER` and `SNOW_PASS` when the matching option is not given, so a password need not reach a shell history or a process list. Exit status is 0 when the sweep finished and verified, 1 when it did not return every record, 2 on a usage or credential problem, and 130 when interrupted.
 
 Async siblings (when installed with `[async]`) follow the same shape: `aload`, `alazy_load`, `aload_since`.
 
@@ -262,7 +319,7 @@ doc.metadata["priority_value"]           # '5'
   <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/decision.png" alt="API decision tree" width="850">
 </p>
 
-Three concurrency models, three jobs. The numbers below came out of a run against a developer instance, not an estimate. Reproduce them on your own instance with `scripts/benchmark_v030.py`.
+Three concurrency models, three jobs, plus a cursor mode that cuts across all of them. The numbers below came out of a run against a developer instance, not an estimate. Reproduce them on your own instance with `scripts/benchmark_v030.py`.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/ronidas39/snowloader/main/docs/_static/performance.png" alt="Threaded sweep timings by worker count" width="900">
@@ -271,6 +328,8 @@ Three concurrency models, three jobs. The numbers below came out of a run agains
 Two things worth taking from that chart. Throughput peaks at 16 workers, which is why 16 is the default, and 32 workers came out slower than 16 rather than marginally faster. Page size in the low hundreds measured best on this path; raising it does not buy speed here, because throughput is bounded by how many pages are in flight rather than by request count.
 
 The async path pulls the other way and wants larger pages, which is why its default is 500. Do not carry a page size from one path to the other.
+
+Separately from concurrency, `keyset=True` pages on a `sys_id` cursor rather than an offset. It is what makes a sequential run resumable, and it is immune to the tied-sort problem by construction rather than by convention. It is not a speed feature: on a 2,919 row table, an offset of 2,800 was no slower than an offset of 0, so the usual deep-offset argument did not reproduce at that scale. Measure your own table before choosing it for throughput.
 
 The threaded path uses a per-thread `requests.Session`, which keeps connection pools and TLS state isolated per worker and avoids the connection-reuse failures some ServiceNow front ends exhibit when many concurrent requests share one session.
 
@@ -541,28 +600,30 @@ conn = SnowConnection(instance_url="...", token="eyJhbG...")
 <details>
 <summary><strong>Recipe: large-scale extraction with resume support</strong></summary>
 
-A common pattern for AI knowledge bases is two parallel corpus pulls. Closed and resolved tickets become a recommendation corpus; active tickets become a duplicate-prevention corpus. Both need raw API output (with `sysparm_display_value=all`), JSONL streaming, resume on crash, and end-of-run validation against the API count.
+A common pattern for AI knowledge bases is two parallel corpus pulls. Closed and resolved tickets become a recommendation corpus, active tickets become a duplicate-prevention corpus. Both need raw API output (`sysparm_display_value=all`), JSONL streaming, resume on crash, and a completeness check at the end.
+
+Both are one command each:
+
+```bash
+snowloader extract incident --out incidents_closed.jsonl --resume \
+    --query "stateIN6,7^close_notesISNOTEMPTY^sys_updated_on>=javascript:gs.daysAgoStart(730)" \
+    --fields sys_id,number,short_description,close_notes,state,priority,category,opened_at,resolved_at \
+    --display-value all --workers 16
+
+snowloader extract incident --out incidents_active.jsonl --resume \
+    --query "active=true" --display-value all --workers 16
+```
+
+Ordering, resume and verification are handled. Either command exits non-zero if its sweep did not return every record, so a shell script can stop on it.
+
+From Python, when the records go somewhere other than a file:
 
 ```python
 import json
-from pathlib import Path
-from snowloader import SnowConnection
+from snowloader import FileCheckpoint, SnowConnection, SweepIncompleteError
 
-QUERY = (
-    "stateIN6,7"
-    "^close_notesISNOTEMPTY"
-    "^sys_updated_on>=javascript:gs.daysAgoStart(730)"
-    "^ORDERBYsys_created_on"
-)
-FIELDS = ["sys_id", "number", "short_description", "close_notes",
-          "state", "priority", "urgency", "impact", "category",
-          "assignment_group", "caller_id", "assigned_to",
-          "opened_at", "resolved_at", "sys_updated_on"]
-
-output_path = Path("incidents_closed.jsonl")
-state_path = Path("incidents_closed.state.json")
-state = json.loads(state_path.read_text()) if state_path.exists() else {"completed": []}
-completed_offsets = set(state["completed"])
+QUERY = "stateIN6,7^close_notesISNOTEMPTY"
+checkpoint = FileCheckpoint("incidents_closed.state.json")
 
 with SnowConnection(
     instance_url="https://yourcompany.service-now.com",
@@ -570,25 +631,24 @@ with SnowConnection(
     password="api_pass",
     page_size=100,
     display_value="all",
-    max_retries=5,
 ) as conn:
-    mode = "a" if completed_offsets else "w"
-    with output_path.open(mode, encoding="utf-8") as fh:
-        for record in conn.concurrent_get_records(
-            table="incident", query=QUERY, fields=FIELDS, max_workers=16
-        ):
-            sid = record["sys_id"].get("value") if isinstance(record["sys_id"], dict) else record["sys_id"]
-            num = record["number"].get("value") if isinstance(record["number"], dict) else record["number"]
-            if not sid or not num:
-                continue
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-
-    line_count = sum(1 for _ in output_path.open("r"))
-    api_total = conn.get_count("incident", query=QUERY)
-    print(f"file: {line_count}, api: {api_total}, drift: {line_count - api_total}")
+    try:
+        with open("incidents_closed.jsonl", "a", encoding="utf-8") as fh:
+            for record in conn.concurrent_get_records(
+                "incident", query=QUERY, max_workers=16,
+                checkpoint=checkpoint, verify=True,
+            ):
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except SweepIncompleteError as exc:
+        alert(f"incident extract incomplete: {exc.report}")
+        raise
 ```
 
-For the full pattern with offset-level checkpointing (so a crash mid-run loses at most a few seconds of work), see the [concurrent documentation page](https://snowloader.readthedocs.io/en/latest/concurrent.html).
+Kill it at any point and run it again; it continues from the last completed page. A run that reaches the end clears its own state.
+
+Two notes worth keeping. Resume repeats rather than drops, so an interrupted run re-delivers the page it was inside; deduplicate on `sys_id` if the output must be unique. And do not validate by comparing a line count against the API count, because the failure that costs you records replaces each lost one with a duplicate and leaves the total unchanged. Count distinct `sys_id`, or pass `verify=True` and let the sweep check itself.
+
+Full detail on the [resume documentation page](https://snowloader.readthedocs.io/en/latest/resume.html).
 </details>
 
 ---
@@ -669,13 +729,18 @@ See the [full documentation](https://snowloader.readthedocs.io/en/latest/configu
   </tr>
   <tr>
     <td><strong>v0.4</strong></td>
-    <td>Keyset pagination and checkpoint / resume for very large loads</td>
-    <td><img src="https://img.shields.io/badge/planned-f59e0b.svg" alt="Planned"></td>
+    <td>Keyset pagination (<code>keyset=True</code>) and resumable extractions (<code>Checkpoint</code>, <code>FileCheckpoint</code>)</td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
   </tr>
   <tr>
-    <td><strong>v0.4</strong></td>
-    <td>Direct vector store streaming (Pinecone, Weaviate, Chroma, Qdrant)</td>
-    <td><img src="https://img.shields.io/badge/planned-f59e0b.svg" alt="Planned"></td>
+    <td><strong>v0.5</strong></td>
+    <td>Command line: <code>snowloader extract</code> and <code>snowloader count</code>, with the careful choices as defaults</td>
+    <td><img src="https://img.shields.io/badge/shipped-10b981.svg" alt="Shipped"></td>
+  </tr>
+  <tr>
+    <td><strong>-</strong></td>
+    <td>Direct vector store streaming. Removed: the LangChain and LlamaIndex adapters already reach dozens of stores, maintained by those projects</td>
+    <td><img src="https://img.shields.io/badge/dropped-64748b.svg" alt="Dropped"></td>
   </tr>
   <tr>
     <td><strong>v1.0</strong></td>
