@@ -2,6 +2,39 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **A command line interface.** `snowloader extract` and `snowloader count`,
+  with no new dependencies.
+
+  It exists because the pieces were all in the library and people were still
+  assembling them by hand and getting it wrong. Of the extraction scripts
+  written against this package beforehand, two built their own encoded query
+  with a non-unique sort, so they never picked up the ordering fix, and one
+  validated itself by comparing a line count against the record count, which
+  is the one check that cannot detect the loss that causes.
+
+  So the defaults are the careful ones. The sort always ends on `sys_id` and
+  there is no option to change it. Verification is on unless switched off
+  deliberately. An incomplete sweep exits 1, a usage problem exits 2, and an
+  interruption exits 130 with a note about `--resume`.
+
+  It refuses to overwrite an output file without being told, and it refuses to
+  resume onto a finished one. A completed run deletes its own state, so an
+  output with no state beside it is finished, and appending to it would write
+  the whole table in a second time. The result would look entirely plausible
+  while holding every record twice.
+
+  Credentials come from `SNOW_INSTANCE`, `SNOW_USER` and `SNOW_PASS` when the
+  options are not given, so a password need not reach a shell history or a
+  process list.
+
+### Documentation
+
+- New page, `docs/cli.rst`.
+
 ## [0.4.0] - 2026-08-28
 
 ### Added

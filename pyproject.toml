@@ -69,6 +69,9 @@ docs = [
     "myst-parser>=3.0.0",
 ]
 
+[project.scripts]
+snowloader = "snowloader.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/ronidas39/snowloader"
 Documentation = "https://snowloader.readthedocs.io"

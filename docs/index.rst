@@ -165,6 +165,7 @@ Where to go next
    :caption: User Guide
 
    getting-started
+   cli
    authentication
    loaders
    verification
