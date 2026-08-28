@@ -76,25 +76,45 @@ fixes driven by real extractions. See :doc:`async`,
   SDK retries up to ``max_retries`` and raises ``SnowConnectionError``
   if the issue persists, instead of silently dropping pages
 
-v0.4 - Very Large Extractions
------------------------------
+v0.4 - Resumable Extractions (Shipped 2026-08-28)
+-------------------------------------------------
 
 **Keyset pagination**
 
-Offset pagination gets slower the deeper it goes, because the instance
-still has to walk past every skipped row. Paging on ``sys_id >
-last_seen`` instead keeps the cost per page flat. The ordering fix in
-0.3.0 is the prerequisite for it.
+``get_records(keyset=True)`` pages on a ``sys_id`` cursor rather than an
+offset. The ordering fix in 0.3.0 was its prerequisite.
+
+The usual argument for keyset is that deep offsets cost more than shallow
+ones. That did not reproduce on a developer instance: at 2,919 rows, median
+of five requests, a page at offset 2,800 took 1,118 ms against 1,125 ms at
+offset 0, and end to end keyset was slightly slower than offset because it is
+sequential. So it is documented as being for resumability and for immunity to
+the tied sort problem, with the depth argument marked unproven at that scale.
 
 **Checkpoint and resume**
 
-For large loads (100k+ records), save progress to disk so that a crash
-at record 50k does not require starting from the beginning.
+``Checkpoint`` and ``FileCheckpoint`` record how far a run reached, on the
+keyset path and on the threaded paginator. State is written per completed
+page, so an interrupted run repeats a page rather than dropping one. Each
+checkpoint carries a fingerprint of the extraction and refuses a run that does
+not match. See :doc:`resume`.
 
-**Direct vector store streaming**
+Not planned: direct vector store streaming
+------------------------------------------
 
-Write documents directly to Pinecone, Weaviate, Chroma, or Qdrant
-without holding everything in memory.
+This sat on the roadmap for a while and is now off it.
+
+The framework adapters already provide the path. A document goes from
+snowloader to a LangChain or LlamaIndex ``Document`` and from there into any
+store those projects support, which is dozens, maintained by people who work
+on them full time. Building four direct integrations here would cover fewer
+stores, duplicate work already done, and tie this package's release cycle to
+four client libraries that have each shipped breaking rewrites.
+
+It would also move the package out of its lane. What it is good at is getting
+data out of ServiceNow correctly. Writing to vector databases is a different
+competence, and doing it adequately would compete for attention with doing the
+first thing well.
 
 Not planned: write support
 --------------------------
