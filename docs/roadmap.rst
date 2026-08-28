@@ -99,6 +99,23 @@ page, so an interrupted run repeats a page rather than dropping one. Each
 checkpoint carries a fingerprint of the extraction and refuses a run that does
 not match. See :doc:`resume`.
 
+v0.5 - Command Line (Shipped 2026-08-28)
+-----------------------------------------
+
+``snowloader extract`` and ``snowloader count``, on argparse, so nothing new
+to install.
+
+Everything it does was already possible through the library. It exists because
+that was not enough: of the extraction scripts written against this package
+beforehand, two built their own encoded query with a non-unique sort and never
+picked up the ordering fix, and one validated itself with a line count, the
+one check that cannot detect the resulting loss.
+
+So the command makes the careful choices the defaults. The sort always ends on
+``sys_id`` with no option to change it, verification is on unless switched off
+deliberately, and an incomplete sweep exits non-zero. It refuses to overwrite
+an output file, and refuses to resume onto a finished one. See :doc:`cli`.
+
 Not planned: direct vector store streaming
 ------------------------------------------
 

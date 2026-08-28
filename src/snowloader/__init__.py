@@ -35,7 +35,7 @@ from snowloader.models import BaseSnowLoader, SnowDocument
 from snowloader.sweep import SweepReport
 from snowloader.utils.parsing import parse_labelled_int
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 try:
     from snowloader.async_connection import AsyncSnowConnection  # noqa: F401
