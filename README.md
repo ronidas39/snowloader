@@ -297,6 +297,7 @@ And the same work from a shell:
 | `snowloader extract <table> --out f.jsonl` | Sweeps the table to JSONL, verifying as it goes |
 | `... --resume` | Continues an interrupted run, and records progress so this one can be continued |
 | `... --workers 16` | Fetches pages in parallel instead of sequentially |
+| `... --limit N` | Stop after N records. For sampling a table, not extracting it |
 | `... --display-value all` | Keeps both halves of every field in the raw output |
 | `... --skip-failed-pages` | Carries on past a page that will not fetch, and reports the gap |
 

@@ -2,6 +2,27 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-08-28
+
+### Fixed
+
+- **`snowloader.__version__` reported the wrong release.** It was maintained by
+  hand next to the number in `pyproject.toml` and had drifted, so 0.5.1 and
+  0.6.0 both shipped announcing themselves as 0.5.0. `snowloader --version`
+  gave the same wrong answer, which means a bug report could name a release
+  that was not the one running.
+
+  It now reads from the installed package metadata, so there is only one number
+  and it cannot drift again. A test compares it against `pyproject.toml` and
+  against what the command line prints.
+
+  Found by installing 0.6.0 from PyPI into a clean environment and asking it
+  what it was, which is a check worth doing on every release rather than
+  trusting the build.
+
+- The README's command line table did not list `--limit`, though the flag
+  shipped in 0.6.0 and the documentation page covered it.
+
 ## [0.6.0] - 2026-08-28
 
 Everything in this release closes a hole between what the library could do and

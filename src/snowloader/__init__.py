@@ -10,6 +10,9 @@ Author: Roni Das
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _metadata_version
+
 from snowloader.checkpoints import Checkpoint, FileCheckpoint
 from snowloader.connection import SnowConnection
 from snowloader.exceptions import SnowConnectionError, SweepIncompleteError
@@ -35,7 +38,13 @@ from snowloader.models import BaseSnowLoader, SnowDocument
 from snowloader.sweep import SweepReport
 from snowloader.utils.parsing import parse_labelled_int
 
-__version__ = "0.5.0"
+try:
+    # Read from the installed metadata rather than repeating the number here.
+    # Kept by hand it drifted: 0.5.1 and 0.6.0 both shipped announcing 0.5.0,
+    # so ``snowloader --version`` named a release that was not the one running.
+    __version__ = _metadata_version("snowloader")
+except PackageNotFoundError:  # pragma: no cover - only when run from source
+    __version__ = "0.0.0+unknown"
 
 try:
     from snowloader.async_connection import AsyncSnowConnection  # noqa: F401
