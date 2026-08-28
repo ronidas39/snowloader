@@ -30,6 +30,8 @@ from typing import Any, cast
 
 import requests
 
+from snowloader.checkpoints import Checkpoint
+from snowloader.checkpoints import fingerprint as _fingerprint
 from snowloader.exceptions import SnowConnectionError, SweepIncompleteError
 from snowloader.fields import raw_value
 from snowloader.ordering import (
@@ -302,6 +304,7 @@ class SnowConnection:
         verify: bool = False,
         on_error: str = "raise",
         keyset: bool = False,
+        checkpoint: Checkpoint | None = None,
     ) -> Generator[dict[str, object], None, None]:
         """Fetch records from a ServiceNow table with automatic pagination.
 
@@ -346,6 +349,13 @@ class SnowConnection:
 
                 It sorts by ``sys_id`` and cannot be combined with a deliberate
                 ``order_by``.
+            checkpoint: Somewhere to record how far the run got, so that
+                running the same call again continues rather than starting
+                over. Requires ``keyset=True`` on this path. The position is
+                written after each page is fully yielded, so an interrupted
+                run resumes at a page boundary and may repeat records from the
+                page it was in the middle of. Losing nothing matters more than
+                repeating a little. A run that finishes clears its own state.
 
         Yields:
             Individual record dicts straight from the ServiceNow response.
@@ -371,6 +381,17 @@ class SnowConnection:
             self._check_verifiable(fields)
         if keyset:
             self._check_keyset(fields)
+        if checkpoint is not None and not keyset:
+            raise SnowConnectionError(
+                "checkpoint= on get_records requires keyset=True.",
+                detail=(
+                    "An offset is only meaningful while the result set stays "
+                    "in the same order, which is not something a later run can "
+                    "count on. A keyset cursor names an actual record, so it "
+                    "still means the same thing tomorrow. Use "
+                    "concurrent_get_records if you want offset based resume."
+                ),
+            )
 
         params = self._build_query_params(
             query=query, fields=fields, since=since, order=KEYSET_ORDER if keyset else None
@@ -396,6 +417,20 @@ class SnowConnection:
         )
 
         cursor = ""
+        run_id = ""
+        if checkpoint is not None:
+            run_id = _fingerprint(
+                table=table,
+                query=self._keyset_query(query=query, since=since, cursor=""),
+                page_size=self.page_size,
+                mode="keyset",
+                fields=fields,
+            )
+            saved = checkpoint.load(run_id)
+            if saved and isinstance(saved.get("cursor"), str):
+                cursor = saved["cursor"]
+                logger.info("Resuming keyset read of '%s' after sys_id %s", table, cursor)
+
         while True:
             url = f"{self.instance_url}/api/now/table/{table}"
             if keyset:
@@ -468,6 +503,8 @@ class SnowConnection:
                         ),
                     )
                 cursor = nxt
+                if checkpoint is not None:
+                    checkpoint.save(run_id, {"cursor": cursor, "yielded": total_yielded})
                 logger.debug(
                     "Fetched page (cursor=%s, records=%d, total_so_far=%d)",
                     cursor,
@@ -484,6 +521,9 @@ class SnowConnection:
                 )
 
         logger.info("Completed fetch from '%s': %d records total.", table, total_yielded)
+
+        if checkpoint is not None:
+            checkpoint.clear()
 
         if tracker:
             tracker.check()
@@ -542,6 +582,7 @@ class SnowConnection:
         max_workers: int = 16,
         verify: bool = False,
         on_error: str = "raise",
+        checkpoint: Checkpoint | None = None,
     ) -> Generator[dict[str, object], None, None]:
         """Fetch records using a thread pool so pages download in parallel.
 
@@ -573,6 +614,14 @@ class SnowConnection:
             on_error: ``"raise"`` (default) aborts the sweep when a page
                 cannot be fetched. ``"skip"`` logs the page, leaves a gap and
                 lets the remaining pages finish.
+            checkpoint: Somewhere to record which pages finished, so that
+                running the same call again fetches only the rest. This path
+                completes pages out of order, so a single furthest offset
+                would not describe it. It records the set of offsets whose
+                records were all yielded, and a page is only added once it
+                has been. An interrupted run therefore repeats the page it
+                was in the middle of rather than dropping it. A run that
+                finishes clears its own state.
 
         Yields:
             One record dict at a time as pages arrive.
@@ -602,11 +651,35 @@ class SnowConnection:
             return
 
         page_count = (total + self.page_size - 1) // self.page_size
+
+        run_id = ""
+        done: set[int] = set()
+        if checkpoint is not None:
+            run_id = _fingerprint(
+                table=table,
+                query=full_query,
+                page_size=self.page_size,
+                mode="offset",
+                fields=fields,
+            )
+            saved = checkpoint.load(run_id)
+            if saved:
+                done = {int(o) for o in saved.get("completed_offsets", [])}
+                if done:
+                    logger.info(
+                        "Resuming threaded read of '%s': %d of %d pages already done",
+                        table,
+                        len(done),
+                        page_count,
+                    )
+
+        offsets = [i * self.page_size for i in range(page_count) if i * self.page_size not in done]
         logger.info(
-            "Concurrent fetch from '%s': %d records, %d pages, %d workers",
+            "Concurrent fetch from '%s': %d records, %d pages (%d to fetch), %d workers",
             table,
             total,
             page_count,
+            len(offsets),
             max_workers,
         )
 
@@ -651,7 +724,7 @@ class SnowConnection:
             return cast(list[dict[str, object]], raw)
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
-            futures = [pool.submit(fetch_page, i * self.page_size) for i in range(page_count)]
+            futures = {pool.submit(fetch_page, off): off for off in offsets}
             for fut in as_completed(futures):
                 records = fut.result()
                 if records is None:
@@ -662,6 +735,14 @@ class SnowConnection:
                     for record in records:
                         tracker.observe(record)
                 yield from records
+                if checkpoint is not None:
+                    # Only once every record of the page has been handed over.
+                    # A page recorded before that could be skipped on resume.
+                    done.add(futures[fut])
+                    checkpoint.save(run_id, {"completed_offsets": sorted(done)})
+
+        if checkpoint is not None:
+            checkpoint.clear()
 
         if tracker:
             tracker.check()

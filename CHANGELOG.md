@@ -2,6 +2,54 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Keyset pagination.** `get_records(keyset=True)` pages on a `sys_id` cursor
+  instead of an offset, asking each time for the rows after the last one seen.
+  It keeps your filter and any delta cutoff in front of the cursor, reads the
+  cursor from the value half so `display_value="all"` works, and composes with
+  `verify` and the loaders. It refuses a field list without `sys_id`, since the
+  cursor comes out of the records, and a deliberate `order_by`, since a single
+  value cursor can only walk the column it sorts by. A page whose last record
+  carries no usable `sys_id` raises rather than repeating the same request.
+
+  Worth being plain about what it is for. The usual argument for keyset is that
+  deep offsets cost more than shallow ones. That was not reproducible here: on
+  a 2,919 row table, median of five requests, a page at offset 2,800 took
+  1,118 ms against 1,125 ms at offset 0. Flat. End to end keyset came out
+  slightly slower than offset, because it is sequential where the threaded
+  paginator is not. Its real value is that the position is one value you can
+  write down, and that it cannot be caught by the tied sort problem. Measure
+  your own table before choosing it for speed.
+
+- **Resumable extractions.** `Checkpoint` and `FileCheckpoint` record how far
+  a run reached, so running the same call again continues rather than starting
+  over. Supported on `get_records` with `keyset=True`, and on
+  `concurrent_get_records`, which records the set of finished page offsets
+  because it completes pages out of order.
+
+  State is written when a page is complete, not when a record is handed over,
+  so an interrupted run repeats the page it was in the middle of rather than
+  dropping it. Interrupting a live sweep of 2,919 records after 500 at page
+  size 200 gave 3,019 lines, 2,919 distinct, 0 missing and 100 duplicates,
+  the duplicates being that one page.
+
+  Every checkpoint carries a fingerprint of table, query, field list, page size
+  and mode, and refuses to be read by a run that does not match. Resuming into
+  a different result set would produce an output that is partly one thing and
+  partly another, which is worse than starting again.
+
+  `FileCheckpoint` writes atomically and treats an unparseable file as absent,
+  so a process killed mid-write cannot block the next run.
+
+### Documentation
+
+- New page, `docs/resume.rst`: both kinds of position, why it repeats rather
+  than drops, what the fingerprint protects against, and how to keep state
+  somewhere other than a file.
+
 ## [0.3.1] - 2026-08-28
 
 Documentation only. No code changed, so there is nothing to gain by upgrading

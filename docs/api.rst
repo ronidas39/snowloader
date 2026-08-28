@@ -19,6 +19,18 @@ Connection
    :special-members: __init__
    :show-inheritance:
 
+Checkpoints
+-----------
+
+.. autoclass:: snowloader.Checkpoint
+   :members:
+
+.. autoclass:: snowloader.FileCheckpoint
+   :members:
+   :special-members: __init__
+
+.. autofunction:: snowloader.checkpoints.fingerprint
+
 Sweep Verification
 ------------------
 

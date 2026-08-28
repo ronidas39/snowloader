@@ -10,6 +10,7 @@ Author: Roni Das
 
 from __future__ import annotations
 
+from snowloader.checkpoints import Checkpoint, FileCheckpoint
 from snowloader.connection import SnowConnection
 from snowloader.exceptions import SnowConnectionError, SweepIncompleteError
 from snowloader.fields import (
@@ -71,7 +72,9 @@ __all__ = [
     "AttachmentLoader",
     "BaseSnowLoader",
     "CatalogLoader",
+    "Checkpoint",
     "ChangeLoader",
+    "FileCheckpoint",
     "CMDBLoader",
     "IncidentLoader",
     "KnowledgeBaseLoader",
