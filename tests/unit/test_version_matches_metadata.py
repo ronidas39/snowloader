@@ -44,6 +44,8 @@ def test_cli_reports_the_same_version() -> None:
 
     out = subprocess.run(
         [sys.executable, "-m", "snowloader.cli", "--version"],
-        capture_output=True, text=True, timeout=60,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert _pyproject_version() in (out.stdout + out.stderr)
