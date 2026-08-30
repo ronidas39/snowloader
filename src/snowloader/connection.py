@@ -25,7 +25,7 @@ import threading
 import time
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from types import TracebackType
 from typing import Any, cast
 
@@ -42,6 +42,7 @@ from snowloader.ordering import (
     is_keyset_compatible,
     normalise_order_by,
 )
+from snowloader.reconcile import ReconciliationReport
 from snowloader.sweep import SweepReport, SweepTracker
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,38 @@ __all__ = [
     "SweepIncompleteError",
     "SweepReport",
 ]
+
+
+# A query naming every subclass of cmdb_ci is long enough to be refused.
+# The instance returned 414 Request-URI Too Large for the 711 tables that
+# resolve under it, so the names go out in batches that stay well inside
+# what a URI will carry.
+_MAX_QUERY_CHARS = 3000
+
+
+def _parse_stamp(value: str) -> datetime | None:
+    """Read a ServiceNow timestamp, or None when it is not one."""
+    try:
+        return datetime.strptime(value, _SINCE_TIMESTAMP_FORMAT).replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return None
+
+
+def _batch_table_names(names: list[str]) -> list[list[str]]:
+    """Split table names into groups whose joined length stays under the cap."""
+    batches: list[list[str]] = []
+    current: list[str] = []
+    length = 0
+    for name in names:
+        addition = len(name) + 1
+        if current and length + addition > _MAX_QUERY_CHARS:
+            batches.append(current)
+            current, length = [], 0
+        current.append(name)
+        length += addition
+    if current:
+        batches.append(current)
+    return batches or [[]]
 
 
 class SnowConnection:
@@ -580,6 +613,257 @@ class SnowConnection:
         if tracker:
             tracker.check()
 
+    # -- Deletions --
+
+    def reconcile(
+        self,
+        table: str,
+        since: datetime,
+        query: str | None = None,
+        fields: list[str] | None = None,
+        include_deletes: bool = True,
+        include_subclasses: bool = True,
+    ) -> ReconciliationReport:
+        """What changed on a table since a point in time, split three ways.
+
+        ``load_since`` answers one third of this. It returns rows whose
+        ``sys_updated_on`` moved, which mixes newly created records in with
+        edited ones, and a deleted row leaves nothing behind for it to report.
+        A copy kept in step that way gains records that no longer exist and
+        never notices.
+
+        Args:
+            table: Table to reconcile.
+            since: The cutoff. Naive datetimes are read as UTC.
+            query: Optional encoded query narrowing what is considered.
+            fields: Fields to return on added and updated records.
+                ``sys_id``, ``sys_created_on`` and ``sys_updated_on`` are
+                added when missing, because the split depends on them.
+            include_deletes: Read ``sys_audit_delete`` as well. Turn it off
+                for an append-only table, or where the audit is not readable.
+            include_subclasses: Resolve descendants when looking for
+                deletions. See :meth:`get_deleted_records`.
+
+        Returns:
+            A :class:`~snowloader.ReconciliationReport`.
+
+        Raises:
+            SnowConnectionError: If the table name is empty or a read fails.
+
+        Example:
+            >>> report = conn.reconcile("incident", since=last_run)
+            >>> print(report)
+            table=incident since=2026-08-01 00:00:00 added=12 updated=40 ...
+        """
+        if not table or not table.strip():
+            raise SnowConnectionError("table name must not be empty.")
+
+        cutoff = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
+        wanted = list(fields) if fields else None
+        if wanted is not None:
+            for needed in ("sys_id", "sys_created_on", "sys_updated_on"):
+                if needed not in wanted:
+                    wanted.append(needed)
+
+        report = ReconciliationReport(table=table, since=cutoff)
+
+        gone: set[str] = set()
+        if include_deletes:
+            report.horizon = self.get_deletion_horizon()
+            for row in self.get_deleted_records(
+                table, since=cutoff, include_subclasses=include_subclasses
+            ):
+                key = str(row["sys_id"])
+                if key not in gone:
+                    gone.add(key)
+                    report.deleted.append(row)
+
+        for record in self.get_records(table, query=query, fields=wanted, since=cutoff):
+            key = raw_value(record.get("sys_id"))
+            if key and key in gone:
+                # Created and deleted between two runs. Reporting it as added
+                # as well would have a sync write the row and then remove it.
+                continue
+            created = raw_value(record.get("sys_created_on"))
+            if created and _parse_stamp(created) is not None:
+                parsed = _parse_stamp(created)
+                assert parsed is not None
+                if parsed >= cutoff:
+                    report.added.append(record)
+                    continue
+            report.updated.append(record)
+
+        return report
+
+    def get_table_descendants(self, table: str) -> list[str]:
+        """Every table that inherits from this one, including itself.
+
+        ServiceNow models table inheritance in ``sys_db_object.super_class``.
+        Resolving it matters because deletions are audited against the class a
+        record actually belongs to: sweeping ``cmdb_ci`` returns every subclass
+        under it, but the deletion of a Linux server is filed under
+        ``cmdb_ci_linux_server``.
+
+        Matching on the name instead would be wrong in both directions. It
+        would pull in ``incident_task``, which is a separate table rather than
+        a subclass of ``incident``, and it would miss ``incident`` itself when
+        resolving ``task``, since the name shares no prefix.
+
+        Args:
+            table: The base table name.
+
+        Returns:
+            Table names, the base first, then every descendant, sorted.
+
+        Raises:
+            SnowConnectionError: If the table registry cannot be read.
+
+        Example:
+            >>> conn.get_table_descendants("cmdb_ci")[:3]
+            ['cmdb_ci', 'cmdb_ci_aix_server', 'cmdb_ci_app_server']
+        """
+        if not table or not table.strip():
+            raise SnowConnectionError("table name must not be empty.")
+
+        by_id: dict[str, str] = {}
+        children: dict[str, list[str]] = {}
+        for row in self.get_records("sys_db_object", fields=["sys_id", "name", "super_class"]):
+            sid = raw_value(row.get("sys_id"))
+            name = raw_value(row.get("name"))
+            if not sid or not name:
+                continue
+            by_id[sid] = name
+            parent = raw_value(row.get("super_class"))
+            if parent:
+                children.setdefault(parent, []).append(sid)
+
+        start = next((sid for sid, name in by_id.items() if name == table), None)
+        if start is None:
+            # The registry did not name it. Returning the table alone is
+            # honest: it is what the caller asked for, and inventing
+            # descendants would be worse.
+            logger.warning(
+                "Table '%s' is not in sys_db_object, so no subclasses were resolved.",
+                table,
+            )
+            return [table]
+
+        found = {table}
+        stack = [start]
+        while stack:
+            for kid in children.get(stack.pop(), []):
+                child_name = by_id.get(kid)
+                if child_name and child_name not in found:
+                    found.add(child_name)
+                    stack.append(kid)
+        return sorted(found)
+
+    def get_deletion_horizon(self) -> datetime | None:
+        """The oldest deletion the instance still remembers.
+
+        ``sys_audit_delete`` is pruned, so a sync running less often than the
+        retention window misses deletions permanently. Knowing the horizon is
+        what lets a caller tell "nothing was deleted" apart from "the instance
+        no longer knows".
+
+        Returns:
+            Timestamp of the oldest audited deletion, or None when the audit
+            table is empty.
+        """
+        # The default ordering is ascending sys_created_on, so the first row
+        # is the oldest deletion the instance still holds.
+        rows = list(self.get_records("sys_audit_delete", fields=["sys_created_on"], limit=1))
+        if not rows:
+            return None
+        stamp = raw_value(rows[0].get("sys_created_on"))
+        if not stamp:
+            return None
+        try:
+            return datetime.strptime(stamp, _SINCE_TIMESTAMP_FORMAT).replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    def get_deleted_records(
+        self,
+        table: str,
+        since: datetime,
+        include_subclasses: bool = True,
+        check_horizon: bool = False,
+    ) -> Generator[dict[str, object], None, None]:
+        """Records deleted from a table since a point in time.
+
+        A delta sync on ``sys_updated_on`` cannot report a deletion, because a
+        deleted row has no timestamp left to compare. This reads
+        ``sys_audit_delete`` instead, which keeps one row per deleted record.
+
+        Args:
+            table: Table the records were deleted from.
+            since: Only deletions at or after this moment. Naive datetimes are
+                read as UTC, which is what the instance compares against.
+            include_subclasses: Resolve the table's descendants and look for
+                deletions under all of them. On by default, because deletions
+                are audited against the real class and querying a base table
+                alone finds none of them.
+            check_horizon: Refuse the call when ``since`` predates the oldest
+                audited deletion. Off by default so that an instance with a
+                short retention does not break existing code, but worth
+                turning on for a sync that must not silently miss deletions.
+
+        Yields:
+            One dict per deletion with ``sys_id``, ``table`` and ``deleted_at``.
+
+        Raises:
+            SnowConnectionError: If ``check_horizon`` is set and the cutoff
+                predates what the instance still remembers.
+
+        Example:
+            >>> gone = list(conn.get_deleted_records("cmdb_ci", since=last_run))
+            >>> [row["sys_id"] for row in gone][:2]
+            ['3a1b...', '7c22...']
+        """
+        if not table or not table.strip():
+            raise SnowConnectionError("table name must not be empty.")
+
+        if check_horizon:
+            horizon = self.get_deletion_horizon()
+            cutoff = since if since.tzinfo else since.replace(tzinfo=timezone.utc)
+            if horizon is not None and cutoff < horizon:
+                raise SnowConnectionError(
+                    f"Deletions before {horizon:%Y-%m-%d %H:%M:%S} are past the "
+                    f"audit horizon on this instance.",
+                    detail=(
+                        "sys_audit_delete has been pruned back to that point, so "
+                        "anything deleted earlier cannot be recovered from it. "
+                        "An empty result here would look like nothing was "
+                        "deleted, which is not the same thing. Sync more often "
+                        "than the retention window, or reconcile against a full "
+                        "sweep instead."
+                    ),
+                )
+
+        tables = self.get_table_descendants(table) if include_subclasses else [table]
+        stamp = (since if since.tzinfo else since.replace(tzinfo=timezone.utc)).strftime(
+            _SINCE_TIMESTAMP_FORMAT
+        )
+
+        for batch in _batch_table_names(tables):
+            query = f"sys_created_on>={stamp}^tablameIN{','.join(batch)}".replace(
+                "tablameIN", "tablenameIN"
+            )
+            for row in self.get_records(
+                "sys_audit_delete",
+                query=query,
+                fields=["sys_id", "tablename", "documentkey", "sys_created_on"],
+            ):
+                key = raw_value(row.get("documentkey"))
+                if not key:
+                    continue
+                yield {
+                    "sys_id": key,
+                    "table": raw_value(row.get("tablename")) or table,
+                    "deleted_at": raw_value(row.get("sys_created_on")) or "",
+                }
+
     def get_count(
         self,
         table: str,
@@ -1050,6 +1334,13 @@ class SnowConnection:
         params: dict[str, str] = {
             "sysparm_limit": str(self.page_size),
             "sysparm_display_value": self.display_value,
+            # This library walks offsets itself and never reads the Link
+            # headers, so building them is work the instance does for nothing.
+            # It also fails outright on a long query: asking sys_audit_delete
+            # about several hundred subclasses returned 400 with "the
+            # requested query is too long to build the response pagination
+            # header URLs", which suppressing them removes entirely.
+            "sysparm_suppress_pagination_header": "true",
         }
 
         query_parts: list[str] = []

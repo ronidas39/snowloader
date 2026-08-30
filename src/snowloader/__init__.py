@@ -35,6 +35,7 @@ from snowloader.loaders.problems import ProblemLoader
 from snowloader.loaders.relationships import RelationshipLoader
 from snowloader.loaders.table import TableLoader
 from snowloader.models import BaseSnowLoader, SnowDocument
+from snowloader.reconcile import ReconciliationReport
 from snowloader.sweep import SweepReport
 from snowloader.utils.parsing import parse_labelled_int
 
@@ -94,6 +95,7 @@ __all__ = [
     "SnowConnectionError",
     "SnowDocument",
     "SweepIncompleteError",
+    "ReconciliationReport",
     "SweepReport",
     "TableLoader",
     "__version__",

@@ -341,3 +341,64 @@ def test_a_limited_extract_does_not_claim_to_be_verified(tmp_path: Path) -> None
         code = main([*CREDS, "extract", "incident", "--out", str(out), "--limit", "10"])
 
     assert code == 0
+
+
+def test_extract_writes_csv_when_asked(tmp_path: Path) -> None:
+    out = tmp_path / "x.csv"
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        rsps.add(
+            responses.GET,
+            f"{STATS_API}/incident",
+            json={"result": {"stats": {"count": "3"}}},
+            status=200,
+        )
+        rsps.add(responses.GET, INCIDENT, json={"result": _rows(0, 3)}, status=200)
+        rsps.add(responses.GET, INCIDENT, json={"result": []}, status=200)
+        code = main([*CREDS, "extract", "incident", "--out", str(out), "--page-size", "10"])
+
+    assert code == 0
+    import csv as _csv
+
+    rows = list(_csv.DictReader(out.open()))
+    assert len(rows) == 3
+    assert rows[0]["number"] == "INC0000000"
+
+
+def test_the_format_follows_the_extension(tmp_path: Path) -> None:
+    """Writing JSONL into a file called .csv is found much later, in a
+    spreadsheet that will not open."""
+    from snowloader.cli import _format_for
+
+    assert _format_for(Path("a.csv")) == "csv"
+    assert _format_for(Path("a.xlsx")) == "xlsx"
+    assert _format_for(Path("a.jsonl")) == "jsonl"
+    assert _format_for(Path("a")) == "jsonl"
+
+
+def test_an_explicit_format_beats_the_extension(tmp_path: Path) -> None:
+    out = tmp_path / "misnamed.txt"
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
+        rsps.add(
+            responses.GET,
+            f"{STATS_API}/incident",
+            json={"result": {"stats": {"count": "2"}}},
+            status=200,
+        )
+        rsps.add(responses.GET, INCIDENT, json={"result": _rows(0, 2)}, status=200)
+        rsps.add(responses.GET, INCIDENT, json={"result": []}, status=200)
+        code = main(
+            [
+                *CREDS,
+                "extract",
+                "incident",
+                "--out",
+                str(out),
+                "--format",
+                "csv",
+                "--page-size",
+                "10",
+            ]
+        )
+
+    assert code == 0
+    assert out.read_text().startswith("sys_id,number") or "number" in out.read_text().split("\n")[0]

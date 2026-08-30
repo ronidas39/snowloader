@@ -18,7 +18,7 @@
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&color=1a73e8" alt="PyPI version"></a>
   <a href="https://pypi.org/project/snowloader/"><img src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&color=4fc3f7" alt="Python versions"></a>
   <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-427%20passing-10b981.svg" alt="Tests"></a>
+  <a href="https://snowloader.readthedocs.io"><img src="https://img.shields.io/badge/tests-459%20passing-10b981.svg" alt="Tests"></a>
   <a href="https://peps.python.org/pep-0561/"><img src="https://img.shields.io/badge/typing-strict-1a73e8.svg" alt="Typed"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
@@ -51,7 +51,7 @@
     <td align="center"><b>9</b><br>loaders, each with<br>an async variant</td>
     <td align="center"><b>3</b><br>pagination paths:<br>sequential, threaded, async</td>
     <td align="center"><b>4</b><br>authentication<br>modes</td>
-    <td align="center"><b>427</b><br>unit tests, plus 21<br>against a live instance</td>
+    <td align="center"><b>459</b><br>unit tests, plus 21<br>against a live instance</td>
   </tr>
 </table>
 </div>
@@ -211,15 +211,25 @@ Building RAG or agentic AI on top of ServiceNow data. snowloader covers the core
       Generators and async iterators throughout. The full table never lives in memory at once.
     </td>
     <td width="33%" valign="top">
-      <h3>Carries on past a bad page</h3>
-      <code>on_error="skip"</code> finishes the sweep when one page will not fetch, and tells you at the end exactly which records are missing.
+      <h3>Knows what was deleted</h3>
+      <code>reconcile</code> returns added, updated and deleted apart. A delta on <code>sys_updated_on</code> can never report a deletion, so a mirror built on one only ever grows.
     </td>
   </tr>
   <tr>
     <td width="33%" valign="top">
+      <h3>Writes CSV and Excel</h3>
+      <code>--format csv</code> or <code>xlsx</code>, or let the file extension decide. JSONL stays the default for pipelines.
+    </td>
+    <td width="33%" valign="top">
+      <h3>Carries on past a bad page</h3>
+      <code>on_error="skip"</code> finishes the sweep when one page will not fetch, and tells you at the end exactly which records are missing.
+    </td>
+    <td width="33%" valign="top">
       <h3>Built-in HTML cleaner</h3>
       KB articles arrive as plain text. No BeautifulSoup, no extra dependencies.
     </td>
+  </tr>
+  <tr>
     <td width="33%" valign="top">
       <h3>Tested against a live instance</h3>
       Retry with backoff, rate limiting, thread-safe sessions, proxy support, custom CA bundles.
@@ -227,6 +237,10 @@ Building RAG or agentic AI on top of ServiceNow data. snowloader covers the core
     <td width="33%" valign="top">
       <h3>Strict typing</h3>
       PEP 561 marker, <code>mypy --strict</code> clean, full type hints on every public surface.
+    </td>
+    <td width="33%" valign="top">
+      <h3>Resolves table inheritance</h3>
+      <code>get_table_descendants</code> walks <code>sys_db_object</code>, which is how deletions on a base table are found at all.
     </td>
   </tr>
 </table>
@@ -289,6 +303,16 @@ conn.get_records("cmdb_ci", keyset=True, checkpoint=FileCheckpoint("sweep.json")
 conn.concurrent_get_records("incident", max_workers=16, checkpoint=FileCheckpoint("inc.json"))
 ```
 
+Keeping a copy in step needs three answers, not one. `load_since` gives you the middle one:
+
+```python
+report = conn.reconcile("incident", since=last_run)
+report.added, report.updated, report.deleted   # apart, not mixed
+report.is_complete                             # False past the audit horizon
+```
+
+A delta on `sys_updated_on` can never report a deletion, so a mirror built on it accumulates records that no longer exist. See [keeping a copy in step](https://snowloader.readthedocs.io/en/latest/sync.html).
+
 And the same work from a shell:
 
 | Command | Does |
@@ -300,6 +324,9 @@ And the same work from a shell:
 | `... --limit N` | Stop after N records. For sampling a table, not extracting it |
 | `... --display-value all` | Keeps both halves of every field in the raw output |
 | `... --skip-failed-pages` | Carries on past a page that will not fetch, and reports the gap |
+| `... --format csv` | Write CSV or `xlsx` instead of JSONL, or let the extension decide |
+| `snowloader deleted <table> --since D` | Lists what was deleted, which no delta sync can tell you |
+| `snowloader reconcile <table> --since D` | Added, updated and deleted apart. Exits 1 past the audit horizon |
 
 Credentials come from `SNOW_INSTANCE`, `SNOW_USER` and `SNOW_PASS` when the matching option is not given, so a password need not reach a shell history or a process list. Exit status is 0 when the sweep finished and verified, 1 when it did not return every record, 2 on a usage or credential problem, and 130 when interrupted.
 

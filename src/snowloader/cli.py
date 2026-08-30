@@ -24,6 +24,7 @@ import json
 import logging
 import os
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,7 @@ from snowloader import __version__
 from snowloader.checkpoints import FileCheckpoint
 from snowloader.connection import SnowConnection
 from snowloader.exceptions import SnowConnectionError, SweepIncompleteError
+from snowloader.export import FORMATS, write_records
 
 logger = logging.getLogger("snowloader")
 
@@ -49,6 +51,21 @@ credentials:
   not given, so a password need not appear in a shell history or a process
   list.
 """
+
+
+def _format_for(path: Path) -> str:
+    """Guess the output format from the file name.
+
+    Writing JSONL into something called ``.csv`` because no flag was passed
+    is the kind of surprise that is found much later, in a spreadsheet that
+    will not open.
+    """
+    suffix = path.suffix.lower().lstrip(".")
+    if suffix in ("xlsx", "xls"):
+        return "xlsx"
+    if suffix == "csv":
+        return "csv"
+    return "jsonl"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -83,7 +100,14 @@ def build_parser() -> argparse.ArgumentParser:
     extract = sub.add_parser(
         "extract", parents=[common], help="Write matching records to a JSONL file."
     )
-    extract.add_argument("--out", required=True, help="Output path, one JSON object per line.")
+    extract.add_argument("--out", required=True, help="Output path.")
+    extract.add_argument(
+        "--format",
+        dest="fmt",
+        choices=FORMATS,
+        default=None,
+        help="Output format. Inferred from the file extension when not given.",
+    )
     extract.add_argument(
         "--fields",
         type=lambda s: [f.strip() for f in s.split(",") if f.strip()],
@@ -129,6 +153,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--overwrite", action="store_true", help="Replace the output file if it exists."
     )
     extract.set_defaults(verify=True, func=_cmd_extract)
+
+    common_since = argparse.ArgumentParser(add_help=False)
+    common_since.add_argument(
+        "--since",
+        required=True,
+        help="Cutoff as YYYY-MM-DD or 'YYYY-MM-DD HH:MM:SS'. Read as UTC.",
+    )
+
+    deleted = sub.add_parser(
+        "deleted",
+        parents=[common, common_since],
+        help="List records deleted from a table since a point in time.",
+    )
+    deleted.add_argument("--out", default=None, help="Write to a file instead of stdout.")
+    deleted.add_argument(
+        "--no-subclasses",
+        dest="subclasses",
+        action="store_false",
+        help="Do not resolve descendant tables. Deletions are audited against "
+        "the real class, so a base table finds none without this.",
+    )
+    deleted.set_defaults(subclasses=True, func=_cmd_deleted)
+
+    recon = sub.add_parser(
+        "reconcile",
+        parents=[common, common_since],
+        help="Report what was added, updated and deleted since a point in time.",
+    )
+    recon.add_argument("--out", default=None, help="Write the report as JSON to a file.")
+    recon.set_defaults(func=_cmd_reconcile)
     return parser
 
 
@@ -163,6 +217,79 @@ def _cmd_count(args: argparse.Namespace) -> int:
     with _connect(args) as conn:
         print(conn.get_count(args.table, query=args.query))
     return 0
+
+
+def _parse_since(text: str) -> datetime:
+    """Read a cutoff from the command line, as UTC."""
+    for shape in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text, shape).replace(tzinfo=timezone.utc)
+        except ValueError:
+            continue
+    raise SnowConnectionError(
+        f"Could not read '{text}' as a date.",
+        detail="Use YYYY-MM-DD or 'YYYY-MM-DD HH:MM:SS'.",
+    )
+
+
+def _cmd_deleted(args: argparse.Namespace) -> int:
+    """List what was deleted, which no delta sync can tell you."""
+    since = _parse_since(args.since)
+    with _connect(args) as conn:
+        horizon = conn.get_deletion_horizon()
+        if horizon is not None and since < horizon:
+            logger.warning(
+                "The audit only reaches back to %s, so deletions before that "
+                "are gone rather than absent.",
+                horizon.strftime("%Y-%m-%d %H:%M:%S"),
+            )
+        rows = list(
+            conn.get_deleted_records(args.table, since=since, include_subclasses=args.subclasses)
+        )
+    if args.out:
+        written = write_records(rows, Path(args.out), fmt=_format_for(Path(args.out)))
+        logger.info("Wrote %d deletions to %s", written, args.out)
+    else:
+        for row in rows:
+            print(f"{row['sys_id']}\t{row['table']}\t{row['deleted_at']}")
+    return 0
+
+
+def _cmd_reconcile(args: argparse.Namespace) -> int:
+    """Added, updated and deleted, which is what a sync actually needs."""
+    since = _parse_since(args.since)
+    with _connect(args) as conn:
+        report = conn.reconcile(args.table, since=since, query=args.query)
+
+    logger.info("%s", report)
+    if not report.is_complete:
+        logger.warning(
+            "Deletions before %s are past the audit horizon, so the deleted "
+            "list is a floor rather than the whole truth.",
+            report.horizon.strftime("%Y-%m-%d %H:%M:%S") if report.horizon else "?",
+        )
+    if args.out:
+        Path(args.out).write_text(
+            json.dumps(
+                {
+                    "table": report.table,
+                    "since": report.since.strftime("%Y-%m-%d %H:%M:%S"),
+                    "complete": report.is_complete,
+                    "added": report.added,
+                    "updated": report.updated,
+                    "deleted": report.deleted,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        logger.info("Wrote the report to %s", args.out)
+    else:
+        print(
+            f"added={len(report.added)} updated={len(report.updated)} "
+            f"deleted={len(report.deleted)} complete={report.is_complete}"
+        )
+    return 0 if report.is_complete else 1
 
 
 def _cmd_extract(args: argparse.Namespace) -> int:
@@ -233,15 +360,20 @@ def _cmd_extract(args: argparse.Namespace) -> int:
                 keyset=bool(checkpoint), checkpoint=checkpoint, limit=args.limit, **shared
             )
 
-        mode = "a" if (args.resume and out.exists() and not args.overwrite) else "w"
+        append = bool(args.resume and out.exists() and not args.overwrite)
+        fmt = args.fmt or _format_for(out)
         written = 0
+
+        def counted() -> Any:
+            nonlocal written
+            for record in stream:
+                written += 1
+                if written % 10000 == 0:
+                    logger.info("  %d of %d written", written, total)
+                yield record
+
         try:
-            with out.open(mode) as handle:
-                for record in stream:
-                    handle.write(json.dumps(record) + "\n")
-                    written += 1
-                    if written % 10000 == 0:
-                        logger.info("  %d of %d written", written, total)
+            written = write_records(counted(), out, fmt=fmt, append=append)
         except SweepIncompleteError as exc:
             logger.error("Sweep did not return every record: %s", exc.report)
             logger.error(

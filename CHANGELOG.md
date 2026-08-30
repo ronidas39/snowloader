@@ -2,6 +2,56 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-08-28
+
+A delta sync could never tell you what had been deleted, so a copy kept in step
+gained records that no longer existed and never lost them. This release closes
+that, and adds the two output formats people actually asked for.
+
+### Added
+
+- **`get_deleted_records(table, since)`.** ServiceNow records deletions in
+  `sys_audit_delete`, one row per deleted record. Two things about that table
+  decide whether a sync built on it is correct, and both are handled.
+
+  Deletions are filed against the real class, not the base table. On a
+  developer instance `tablename=cmdb_ci` returned **0 deletions** while the 711
+  class tables underneath it held **895**. Descendants are resolved from
+  `sys_db_object.super_class`, not by matching names: `incident_task` is not a
+  subclass of `incident`, and `incident` is a subclass of `task` despite
+  sharing no prefix.
+
+  The audit is also pruned. `get_deletion_horizon()` reports the oldest
+  deletion the instance still remembers, so "nothing was deleted" can be told
+  apart from "the instance no longer knows".
+
+- **`reconcile(table, since)`** returning added, updated and deleted apart,
+  as a `ReconciliationReport`. A record created and deleted between two runs is
+  reported only as deleted, because reporting it as added as well would have a
+  sync write the row and then remove it. `is_complete` is False when the cutoff
+  predates the audit horizon.
+
+- **CSV and Excel output.** `snowloader extract --format csv|xlsx|jsonl`, or
+  inferred from the file extension. Excel needs `pip install snowloader[excel]`.
+
+  A field carrying both halves becomes two columns. The header is the union of
+  the first 1,000 records rather than whatever the first row had, because a
+  populated reference arrives as a dict and an empty one as a bare string:
+  fifty incident rows produced one raw key set and **twenty six** flattened
+  ones.
+
+- **`snowloader deleted` and `snowloader reconcile`** on the command line.
+  `reconcile` exits 1 when the cutoff is past the audit horizon.
+
+### Fixed
+
+- **Pagination headers are now suppressed on every read.** This library walks
+  offsets itself and never reads the Link headers, so building them is work the
+  instance does for nothing. It also failed outright on a long query: asking
+  `sys_audit_delete` about several hundred subclasses returned 400 with "the
+  requested query is too long to build the response pagination header URLs".
+  A very long table list is batched as well.
+
 ## [0.7.0] - 2026-08-28
 
 **A paginated read could stop early and say nothing. If you are on any earlier

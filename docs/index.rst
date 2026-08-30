@@ -16,7 +16,7 @@ snowloader
      <div class="snow-badges">
        <a href="https://pypi.org/project/snowloader/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&amp;color=1a73e8"></a>
        <a href="https://pypi.org/project/snowloader/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&amp;color=4fc3f7"></a>
-       <a href="https://snowloader.readthedocs.io"><img alt="Tests" src="https://img.shields.io/badge/tests-427%20passing-10b981.svg"></a>
+       <a href="https://snowloader.readthedocs.io"><img alt="Tests" src="https://img.shields.io/badge/tests-459%20passing-10b981.svg"></a>
        <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg"></a>
        <a href="https://opensource.org/licenses/MIT"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
        <a href="https://peps.python.org/pep-0561/"><img alt="Typed" src="https://img.shields.io/badge/typing-strict-1a73e8.svg"></a>
@@ -24,6 +24,7 @@ snowloader
      <div class="snow-cta">
        <a class="snow-cta-primary" href="getting-started.html">Get started</a>
        <a href="cli.html">Command line</a>
+       <a href="sync.html">Keeping in step</a>
        <a href="verification.html">How it verifies</a>
        <a href="api.html">API reference</a>
        <a href="https://github.com/ronidas39/snowloader">Source</a>
@@ -62,7 +63,7 @@ out. See :doc:`cli`.
      <div class="snow-stat"><span class="snow-stat-value">9</span><span class="snow-stat-label">loaders, each with an async variant</span></div>
      <div class="snow-stat"><span class="snow-stat-value">4</span><span class="snow-stat-label">pagination paths: sequential, threaded, async, keyset</span></div>
      <div class="snow-stat"><span class="snow-stat-value">4</span><span class="snow-stat-label">authentication modes</span></div>
-     <div class="snow-stat"><span class="snow-stat-value">427</span><span class="snow-stat-label">unit tests, plus 21 against a live instance</span></div>
+     <div class="snow-stat"><span class="snow-stat-value">459</span><span class="snow-stat-label">unit tests, plus 21 against a live instance</span></div>
    </div>
 
 The bug this package exists for
@@ -116,6 +117,14 @@ What you get
        <p><code>snowloader extract</code> makes the careful choices the defaults:
        ordering that cannot lose rows, verification on unless switched off, and a
        non-zero exit when a sweep came back short.</p>
+     </div>
+     <div class="snow-card snow-card-alert">
+       <span class="snow-kicker">sync</span>
+       <h3>Knows what was deleted</h3>
+       <p>A delta on <code>sys_updated_on</code> can never report a deletion, so a
+       mirror built on one only ever grows. <code>reconcile</code> returns added,
+       updated and deleted apart, and says when the audit no longer reaches back
+       far enough to be sure.</p>
      </div>
      <div class="snow-card">
        <span class="snow-kicker">long jobs</span>
@@ -199,6 +208,7 @@ Where to go next
    verification
    references
    resume
+   sync
    attachments
    concurrent
    async
