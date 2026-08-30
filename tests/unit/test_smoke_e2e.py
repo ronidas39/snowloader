@@ -435,7 +435,9 @@ def test_cmdb_metadata_has_relationships() -> None:
     """CMDB metadata should include structured relationship lists."""
     responses.add(responses.GET, f"{TABLE_API}/cmdb_ci_server", json={"result": CMDB_CIS})
     responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": CMDB_RELS_OUTBOUND})
+    responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": []})
     responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": CMDB_RELS_INBOUND})
+    responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": []})
 
     loader = CMDBLoader(connection=_conn(), ci_class="cmdb_ci_server", include_relationships=True)
     docs = loader.load()
@@ -469,7 +471,9 @@ def test_cmdb_without_relationships() -> None:
 
     assert len(docs) == 1
     # Only 1 API call (the CI table), not 3
-    assert len(responses.calls) == 1
+    # Asserted by endpoint, not by counting requests: a sweep now ends on an
+    # empty page and so makes one more request than it used to.
+    assert not [c for c in responses.calls if "cmdb_rel_ci" in c.request.url]
     # No relationship text
     assert "->" not in docs[0].page_content
     assert "<-" not in docs[0].page_content
@@ -608,8 +612,9 @@ def test_incident_without_journals() -> None:
     loader = IncidentLoader(connection=_conn(), include_journals=False)
     docs = loader.load()
 
-    # Only 1 call (incident table), no sys_journal_field call
-    assert len(responses.calls) == 1
+    # No journal fetch. Asserted by endpoint rather than by counting
+    # requests, because a sweep now ends on an empty page.
+    assert not [c for c in responses.calls if "sys_journal_field" in c.request.url]
     assert "[work_notes]" not in docs[0].page_content
 
 
@@ -715,7 +720,9 @@ def test_langchain_adapter_kwargs_passthrough() -> None:
 
     responses.add(responses.GET, f"{TABLE_API}/cmdb_ci_server", json={"result": CMDB_CIS})
     responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": CMDB_RELS_OUTBOUND})
+    responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": []})
     responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": CMDB_RELS_INBOUND})
+    responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": []})
 
     loader = ServiceNowCMDBLoader(
         connection=_conn(), ci_class="cmdb_ci_server", include_relationships=True
@@ -795,7 +802,9 @@ def test_llamaindex_adapter_kwargs_passthrough() -> None:
 
     responses.add(responses.GET, f"{TABLE_API}/cmdb_ci_server", json={"result": CMDB_CIS})
     responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": CMDB_RELS_OUTBOUND})
+    responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": []})
     responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": CMDB_RELS_INBOUND})
+    responses.add(responses.GET, f"{TABLE_API}/cmdb_rel_ci", json={"result": []})
 
     reader = ServiceNowCMDBReader(
         connection=_conn(), ci_class="cmdb_ci_server", include_relationships=True

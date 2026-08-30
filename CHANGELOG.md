@@ -2,6 +2,49 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-08-28
+
+**A paginated read could stop early and say nothing. If you are on any earlier
+release, upgrade.**
+
+### Fixed
+
+- **A short page no longer ends a sweep.** ServiceNow applies read ACLs after
+  it has selected a page, so a request for 100 rows can come back with 40 while
+  thousands remain. Every release until now treated that as the end of the
+  table.
+
+  The loss was silent and moved with the page size, which is what makes it
+  hard to notice. Measured against `sys_db_object` on a developer instance
+  where the API reports 6,456 rows:
+
+  ```
+  page_size=100   ->   769 rows
+  page_size=500   ->   969 rows
+  page_size=1000  ->   969 rows
+  ```
+
+  After the fix, all three return 6,419, which is every row that instance will
+  hand out. The remaining 37 are rows the count includes but the API refuses,
+  and `verify=True` reports them rather than hiding them.
+
+  Only an empty page ends a read now. That costs one extra request per sweep.
+  A read with `limit` still stops on its own and pays nothing extra.
+
+  Tables whose rows are all readable are unaffected: `cmdb_ci`, `incident` and
+  `cmdb_rel_ci` return exactly what they returned before.
+
+- **A read that stops advancing now raises instead of spinning.** Walking to an
+  empty page trusts the instance to send one. An endpoint that replays the same
+  page forever would otherwise loop without end, so two consecutive identical
+  pages are refused with an explanation.
+
+### Changed
+
+- Sweeps make one more request than they used to. Tests that counted requests
+  rather than asserting on behaviour have been rewritten to assert on the
+  endpoint they actually care about.
+
 ## [0.6.2] - 2026-08-28
 
 Documentation only. No code changed.

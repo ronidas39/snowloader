@@ -18,6 +18,7 @@ Author: Roni Das
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import re
 import threading
@@ -414,6 +415,7 @@ class SnowConnection:
         offset = 0
         total_yielded = 0
         consecutive_failures = 0
+        previous_head: str = ""
 
         logger.info(
             "Starting paginated fetch from '%s' (page_size=%d, limit=%s)",
@@ -503,12 +505,40 @@ class SnowConnection:
             if limit is not None and total_yielded >= limit:
                 break
 
-            # A page shorter than what was asked for means the table ended.
-            # Compare against the size actually requested, not page_size,
-            # because a limit smaller than a page makes every page short.
-            requested = int(params.get("sysparm_limit", self.page_size))
-            if len(records) < requested:
+            # Only an empty page ends the sweep.
+            #
+            # A short page does not mean the table ended. ServiceNow applies
+            # read ACLs after selecting a page, so a request for 100 rows can
+            # come back with 40 while thousands remain. Treating that as the
+            # end truncated silently, and how much was lost depended on where
+            # the filtered rows fell: sys_db_object returned 769 rows at page
+            # size 100 and 969 at page size 500 against a reported 6,456.
+            # Walking to an empty page returns 6,419.
+            #
+            # The cost is one extra request per sweep.
+            if not records:
                 break
+
+            # Guard against a server that never advances. Walking until an
+            # empty page trusts the instance to eventually return one, and a
+            # misbehaving endpoint that replays the same page forever would
+            # otherwise spin without end. Comparing the first sys_id of
+            # consecutive pages is enough to notice, and costs nothing.
+            # Hash the page rather than just its first sys_id, because a
+            # table queried without sys_id in the field list would otherwise
+            # slip past the check and spin.
+            head = hashlib.sha256(repr([sorted(r.items()) for r in records]).encode()).hexdigest()
+            if head == previous_head:
+                raise SnowConnectionError(
+                    f"Paginated read of '{table}' stopped advancing at offset {offset}.",
+                    detail=(
+                        "Two consecutive pages began with the same record, so "
+                        "the sweep would repeat forever. The instance is not "
+                        "honouring sysparm_offset, or the result set is "
+                        "changing underneath the read."
+                    ),
+                )
+            previous_head = head
 
             if keyset:
                 nxt = raw_value(records[-1].get("sys_id"))

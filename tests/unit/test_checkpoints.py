@@ -98,6 +98,7 @@ def test_file_checkpoint_writes_atomically(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.replaying_mocks
 def test_an_unfinished_keyset_run_records_its_cursor(tmp_path: Path) -> None:
     """State is written once a page is complete, not once a record is handed
     over, so the position always names a page boundary."""
@@ -147,8 +148,12 @@ def test_an_interrupted_keyset_run_resumes_from_its_cursor(tmp_path: Path) -> No
             body = pages[0]
         elif f"{9:032x}" in q:
             body = pages[1]
-        else:
+        elif f"{19:032x}" in q:
             body = pages[2]
+        else:
+            # Past the last row. A real instance returns an empty page here,
+            # and a sweep needs that to know it has reached the end.
+            body = []
         import json as _json
 
         return (200, {"Content-Type": "application/json"}, _json.dumps({"result": body}))
@@ -192,6 +197,7 @@ def test_an_interrupted_keyset_run_resumes_from_its_cursor(tmp_path: Path) -> No
     assert {f"{i:032x}" for i in range(10, 24)} == ids
 
 
+@pytest.mark.replaying_mocks
 def test_resuming_with_a_different_query_is_refused(tmp_path: Path) -> None:
     """State from one extraction must not be applied to another."""
     path = tmp_path / "run.json"
@@ -219,6 +225,7 @@ def test_resuming_with_a_different_query_is_refused(tmp_path: Path) -> None:
         conn.close()
 
 
+@pytest.mark.replaying_mocks
 def test_resuming_with_a_different_page_size_is_refused(tmp_path: Path) -> None:
     path = tmp_path / "run.json"
     with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
@@ -255,6 +262,7 @@ def test_a_checkpoint_needs_keyset_on_the_sequential_path(tmp_path: Path) -> Non
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.replaying_mocks
 def test_threaded_run_resumes_only_the_offsets_it_did_not_finish(tmp_path: Path) -> None:
     """The threaded paginator completes pages out of order, so a single last
     offset is not enough. It records the set it actually finished."""

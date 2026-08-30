@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "snowloader"
-version = "0.6.2"
+version = "0.7.0"
 description = "Comprehensive ServiceNow data loader for AI/LLM pipelines - Incidents, CMDB, KB, Changes, Catalog & more. Works with LangChain & LlamaIndex."
 readme = "README.md"
 license = {text = "MIT"}
@@ -118,6 +118,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: tests requiring live ServiceNow instance",
+    "replaying_mocks: the test relies on one registration serving every offset",
 ]
 
 [tool.mypy]

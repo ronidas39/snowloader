@@ -97,7 +97,11 @@ def test_a_non_object_body_is_retried_before_it_is_refused() -> None:
         calls["n"] += 1
         if calls["n"] == 1:
             return (200, {"Content-Type": "application/json"}, "null")
-        return (200, {"Content-Type": "application/json"}, _json.dumps({"result": _rows(0, 3)}))
+        if calls["n"] == 2:
+            return (200, {"Content-Type": "application/json"}, _json.dumps({"result": _rows(0, 3)}))
+        # A real instance returns an empty page past the end, and a sweep now
+        # needs that to know it has finished.
+        return (200, {"Content-Type": "application/json"}, _json.dumps({"result": []}))
 
     with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
         rsps.add_callback(responses.GET, INCIDENT, callback=flaky, content_type="application/json")
@@ -108,7 +112,8 @@ def test_a_non_object_body_is_retried_before_it_is_refused() -> None:
             conn.close()
 
     assert len(records) == 3
-    assert calls["n"] == 2
+    # One null, one retry that recovered, one empty page to end the sweep.
+    assert calls["n"] == 3
 
 
 def test_verification_still_catches_it_when_pages_are_skipped() -> None:

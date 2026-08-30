@@ -159,6 +159,7 @@ def _page_records(prefix: str, count: int) -> list[dict[str, str]]:
     return [{"sys_id": f"{prefix}-{i}", "number": f"INC{prefix}{i:04d}"} for i in range(count)]
 
 
+@pytest.mark.replaying_mocks
 def test_concurrent_get_records_paginates_with_threads() -> None:
     """With count=12 and page_size=5, the paginator must dispatch 3 page
     fetches. The mock returns 5 records on every page hit, so 15 records
@@ -267,6 +268,7 @@ def test_concurrent_get_records_passes_query_and_fields() -> None:
         assert page_params["sysparm_fields"] == "sys_id,number"
 
 
+@pytest.mark.replaying_mocks
 def test_concurrent_get_records_uses_per_thread_session() -> None:
     """Each worker thread must obtain its own ``requests.Session`` instance.
 

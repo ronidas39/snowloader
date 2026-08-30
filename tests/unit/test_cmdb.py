@@ -291,8 +291,10 @@ def test_cmdb_no_relationships() -> None:
     loader = CMDBLoader(connection=_make_connection())
     docs = loader.load()
 
-    # Only one API call should have been made (the CI fetch)
-    assert len(responses.calls) == 1
+    # No relationship fetch. Asserted by endpoint rather than by counting
+    # requests, because a sweep now ends on an empty page and so makes one
+    # more request than it used to.
+    assert not [c for c in responses.calls if "cmdb_rel_ci" in c.request.url]
     assert "relationships" not in docs[0].metadata
 
 

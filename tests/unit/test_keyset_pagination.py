@@ -164,17 +164,27 @@ def test_keyset_reads_the_cursor_from_the_display_value_all_shape() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_keyset_stops_on_a_short_page() -> None:
+def test_keyset_does_not_stop_on_a_short_page() -> None:
+    """This test previously asserted the opposite, and the opposite was wrong.
+
+    ServiceNow applies read ACLs after selecting a page, so a page shorter
+    than requested does not mean the table ended. Measured against
+    sys_db_object on a developer instance, the old rule returned 969 rows of a
+    reported 6,456 and the amount lost moved with the page size. Only an empty
+    page ends a read now, which costs one extra request.
+    """
     with responses.RequestsMock(assert_all_requests_are_fired=False) as rsps:
         rsps.add(responses.GET, INCIDENT, json={"result": _rows(0, 4)}, status=200)
+        rsps.add(responses.GET, INCIDENT, json={"result": _rows(4, 6)}, status=200)
+        rsps.add(responses.GET, INCIDENT, json={"result": []}, status=200)
         conn = _conn(page_size=10)
         try:
             records = list(conn.get_records("incident", keyset=True))
         finally:
             conn.close()
 
-        assert len(records) == 4
-        assert len(_queries(rsps)) == 1
+        assert len(records) == 10, "the short page ended the read"
+        assert len(_queries(rsps)) == 3
 
 
 def test_keyset_stops_on_an_empty_table() -> None:
