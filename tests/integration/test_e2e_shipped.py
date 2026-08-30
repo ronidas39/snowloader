@@ -417,3 +417,94 @@ def test_cli_display_value_all_keeps_both_halves(tmp_path: Path) -> None:
     first = json.loads(out.read_text().splitlines()[0])
     assert isinstance(first["priority"], dict)
     assert {"value", "display_value"} <= set(first["priority"])
+
+
+# ---------------------------------------------------------------------------
+# Truncation, deletions and reconciliation, added 2026-08-28
+# ---------------------------------------------------------------------------
+
+# A table whose rows are filtered by read ACLs, so pages come back short while
+# more remain. It is what exposed the sweep stopping early.
+FILTERED_TABLE = "sys_db_object"
+
+
+def test_a_short_page_does_not_truncate_the_sweep(conn: SnowConnection) -> None:
+    """The result must not depend on the page size. It used to: 769 rows at
+    100, 969 at 500, against a table the instance reports as over 6,000."""
+    seen = {}
+    for size in (100, 500):
+        with SnowConnection(
+            instance_url=INSTANCE, username=USER, password=PASSWORD, page_size=size
+        ) as c:
+            seen[size] = {_sys_id(r) for r in c.get_records(FILTERED_TABLE, fields=["sys_id"])}
+    assert seen[100] == seen[500], "the sweep result moved with the page size"
+    assert len(seen[100]) > 5000, f"only {len(seen[100])} rows came back"
+
+
+def test_all_three_paths_agree_on_an_acl_filtered_table(conn: SnowConnection) -> None:
+    seq = {_sys_id(r) for r in conn.get_records(FILTERED_TABLE, fields=["sys_id"])}
+    thr = {
+        _sys_id(r)
+        for r in conn.concurrent_get_records(FILTERED_TABLE, fields=["sys_id"], max_workers=8)
+    }
+    assert seq == thr, f"threaded differs by {len(seq ^ thr)} rows"
+
+
+def test_deletions_on_a_base_table_need_its_subclasses(conn: SnowConnection) -> None:
+    """The trap. cmdb_ci itself records no deletions at all; they are filed
+    against the class the record actually belonged to."""
+    from datetime import datetime, timezone
+
+    since = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with_subclasses = list(conn.get_deleted_records("cmdb_ci", since=since))
+    without = list(conn.get_deleted_records("cmdb_ci", since=since, include_subclasses=False))
+
+    assert without == [], "the base table is not supposed to record any"
+    assert len(with_subclasses) > 0, "the class tables beneath it should"
+
+
+def test_table_inheritance_resolves_both_ways(conn: SnowConnection) -> None:
+    assert "incident" in conn.get_table_descendants("task")
+    assert "incident_task" not in conn.get_table_descendants("incident")
+    assert len(conn.get_table_descendants("cmdb_ci")) > 100
+
+
+def test_reconcile_separates_the_three_answers(conn: SnowConnection) -> None:
+    from datetime import datetime, timezone
+
+    report = conn.reconcile("incident", since=datetime(2026, 8, 1, tzinfo=timezone.utc))
+    assert report.table == "incident"
+    assert report.total_changes == len(report.added) + len(report.updated) + len(report.deleted)
+    for record in report.added:
+        assert record not in report.updated
+
+
+def test_reconcile_admits_when_the_audit_no_longer_reaches_back(
+    conn: SnowConnection,
+) -> None:
+    """An empty deleted list past the horizon would look like nothing was
+    deleted, which is not the same as the instance no longer knowing."""
+    from datetime import datetime, timezone
+
+    horizon = conn.get_deletion_horizon()
+    if horizon is None:
+        pytest.skip("this instance has no deletion audit to reason about")
+    report = conn.reconcile("incident", since=datetime(2020, 1, 1, tzinfo=timezone.utc))
+    assert report.is_complete is False
+
+
+def test_csv_and_excel_hold_the_same_records(conn: SnowConnection, tmp_path: Path) -> None:
+    import csv as _csv
+
+    from snowloader.export import write_records
+
+    records = list(conn.get_records("incident", fields=["sys_id", "number"], limit=40))
+    csv_path, xlsx_path = tmp_path / "a.csv", tmp_path / "a.xlsx"
+    assert write_records(records, csv_path, fmt="csv") == 40
+    assert write_records(records, xlsx_path, fmt="xlsx") == 40
+
+    from_csv = {row["sys_id"] for row in _csv.DictReader(csv_path.open())}
+    assert len(from_csv) == 40
+    openpyxl = pytest.importorskip("openpyxl")
+    sheet = openpyxl.load_workbook(xlsx_path).active
+    assert sheet.max_row - 1 == 40
