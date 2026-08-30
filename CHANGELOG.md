@@ -2,6 +2,22 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-08-28
+
+### Fixed
+
+- **The async path now trusts the same certificates the sync path does.**
+  `requests` bundles certifi, so a sync connection verifies a ServiceNow
+  certificate anywhere. `aiohttp` reads the operating system store instead, and
+  a stock python.org build on macOS has an empty one, so identical credentials
+  against an identical instance failed with `CERTIFICATE_VERIFY_FAILED` on the
+  async path alone and worked on the sync one.
+
+  `verify_ssl=True` now builds a context from certifi. This is not a
+  relaxation: verification and hostname checking both stay on. `verify_ssl=False`
+  means what it always did, and passing your own `ssl.SSLContext` is now
+  supported and left untouched.
+
 ## [0.8.0] - 2026-08-28
 
 A delta sync could never tell you what had been deleted, so a copy kept in step

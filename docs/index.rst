@@ -16,7 +16,7 @@ snowloader
      <div class="snow-badges">
        <a href="https://pypi.org/project/snowloader/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/snowloader.svg?label=pypi&amp;color=1a73e8"></a>
        <a href="https://pypi.org/project/snowloader/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/snowloader.svg?label=python&amp;color=4fc3f7"></a>
-       <a href="https://snowloader.readthedocs.io"><img alt="Tests" src="https://img.shields.io/badge/tests-459%20passing-10b981.svg"></a>
+       <a href="https://snowloader.readthedocs.io"><img alt="Tests" src="https://img.shields.io/badge/tests-464%20passing-10b981.svg"></a>
        <a href="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ronidas39/snowloader/actions/workflows/ci.yml/badge.svg"></a>
        <a href="https://opensource.org/licenses/MIT"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
        <a href="https://peps.python.org/pep-0561/"><img alt="Typed" src="https://img.shields.io/badge/typing-strict-1a73e8.svg"></a>
@@ -63,7 +63,7 @@ out. See :doc:`cli`.
      <div class="snow-stat"><span class="snow-stat-value">9</span><span class="snow-stat-label">loaders, each with an async variant</span></div>
      <div class="snow-stat"><span class="snow-stat-value">4</span><span class="snow-stat-label">pagination paths: sequential, threaded, async, keyset</span></div>
      <div class="snow-stat"><span class="snow-stat-value">4</span><span class="snow-stat-label">authentication modes</span></div>
-     <div class="snow-stat"><span class="snow-stat-value">459</span><span class="snow-stat-label">unit tests, plus 21 against a live instance</span></div>
+     <div class="snow-stat"><span class="snow-stat-value">464</span><span class="snow-stat-label">unit tests, plus 21 against a live instance</span></div>
    </div>
 
 The bug this package exists for

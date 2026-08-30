@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import ssl
 from collections.abc import AsyncIterator
 from datetime import datetime
 from types import TracebackType
@@ -57,6 +58,27 @@ _SINCE_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
 _INSTANCE_URL_PATTERN = re.compile(r"^https?://[a-zA-Z0-9][-a-zA-Z0-9.]+\.[a-zA-Z]{2,}")
 
 
+def _trust_store(verify_ssl: bool | ssl.SSLContext) -> bool | ssl.SSLContext:
+    """Turn the verify_ssl argument into something aiohttp can trust.
+
+    aiohttp reads the operating system certificate store, which on a stock
+    python.org build for macOS is empty, so verification fails against hosts
+    the sync connection reaches without complaint. requests bundles certifi and
+    that is the difference. Handing aiohttp the same bundle makes the two paths
+    agree, and is not a relaxation: verification stays on and hostname checking
+    stays on.
+    """
+    if verify_ssl is not True:
+        # False, or a context the caller built and means to keep.
+        return verify_ssl
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except (ImportError, OSError):  # pragma: no cover - certifi ships with requests
+        return True
+
+
 class AsyncSnowConnection:
     """Async session against one ServiceNow instance.
 
@@ -87,7 +109,13 @@ class AsyncSnowConnection:
         since_field: Column a delta sync compares its cutoff against.
             Defaults to ``"sys_updated_on"``.
         proxy: Optional proxy URL.
-        verify_ssl: SSL verification. Defaults to True.
+        verify_ssl: SSL verification. True, the default, builds a context
+            from certifi, which is the same trust store the sync connection
+            uses because ``requests`` bundles it. aiohttp would otherwise read
+            the operating system store, and a stock python.org build on macOS
+            has an empty one, so identical credentials against an identical
+            instance failed on the async path alone. Pass False to disable
+            verification, or your own ``ssl.SSLContext`` to control it.
         concurrency: Maximum number of concurrent page fetches. Defaults to 16.
         keep_alive: Reuse TCP connections between requests. Defaults to
             False, which makes every request pay a fresh handshake. That is
@@ -130,7 +158,7 @@ class AsyncSnowConnection:
         order_by: OrderBy = DEFAULT_ORDER_BY,
         since_field: str = _DEFAULT_SINCE_FIELD,
         proxy: str | None = None,
-        verify_ssl: bool = True,
+        verify_ssl: bool | ssl.SSLContext = True,
         concurrency: int = _DEFAULT_CONCURRENCY,
         keep_alive: bool = False,
     ) -> None:
@@ -184,7 +212,7 @@ class AsyncSnowConnection:
         self.keep_alive = keep_alive
         self._order_clauses = normalise_order_by(order_by)
         self._proxy = proxy
-        self._verify_ssl = verify_ssl
+        self._verify_ssl: bool | ssl.SSLContext = _trust_store(verify_ssl)
         self._session: aiohttp.ClientSession | None = None
         self._token_lock = asyncio.Lock()
 
