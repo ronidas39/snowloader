@@ -103,6 +103,10 @@ class AsyncSnowConnection:
         max_retries: Retry attempts for transient failures.
         retry_backoff: Base delay between retries (seconds).
         display_value: Controls ``sysparm_display_value``. Defaults to ``"true"``.
+        exclude_reference_link: Drop the ``link`` URL that ServiceNow puts
+            beside every reference field. The sys_id and the label are already
+            in ``value`` and ``display_value``, so nothing here reads it.
+            Defaults to ``True``.
         order_by: Column, or list of columns, every paginated read sorts by.
             Defaults to ``"sys_created_on"`` with ``sys_id`` appended as a
             tiebreak. See :class:`snowloader.SnowConnection` for the detail.
@@ -155,6 +159,7 @@ class AsyncSnowConnection:
         max_retries: int = _DEFAULT_MAX_RETRIES,
         retry_backoff: float = _DEFAULT_RETRY_BACKOFF,
         display_value: str = "true",
+        exclude_reference_link: bool = True,
         order_by: OrderBy = DEFAULT_ORDER_BY,
         since_field: str = _DEFAULT_SINCE_FIELD,
         proxy: str | None = None,
@@ -206,6 +211,7 @@ class AsyncSnowConnection:
         self.max_retries = max_retries
         self.retry_backoff = retry_backoff
         self.display_value = display_value
+        self.exclude_reference_link = exclude_reference_link
         self.order_by = order_by
         self.since_field = since_field.strip()
         self.concurrency = concurrency
@@ -374,6 +380,13 @@ class AsyncSnowConnection:
         params: dict[str, str] = {
             "sysparm_limit": str(self.page_size),
             "sysparm_display_value": self.display_value,
+            # A reference field already carries the sys_id in `value` and the
+            # label in `display_value`, so the `link` beside them is a URL this
+            # library never reads. It costs response size on every reference of
+            # every record, and it carries the instance hostname into whatever
+            # consumes the documents, which for a RAG pipeline means the chunks,
+            # the embeddings and the prompt logs.
+            **({"sysparm_exclude_reference_link": "true"} if self.exclude_reference_link else {}),
         }
         query_parts: list[str] = []
         if query:

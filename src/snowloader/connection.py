@@ -162,6 +162,12 @@ class SnowConnection:
             ``"true"`` (default) returns human-readable labels for
             reference fields. ``"false"`` returns raw values. ``"all"``
             returns both ``{display_value, value}`` dicts.
+        exclude_reference_link: Drop the ``link`` URL that ServiceNow puts
+            beside every reference field. The sys_id and the label are
+            already in ``value`` and ``display_value``, so the URL is
+            reconstructible and nothing here reads it. Defaults to ``True``,
+            which keeps responses smaller and keeps the instance hostname
+            out of the documents. Set ``False`` to get the links back.
         order_by: Column, or list of columns, every paginated read sorts by.
             Defaults to ``"sys_created_on"``. ``sys_id`` is appended
             automatically as a tiebreak unless the chain already sorts on
@@ -208,6 +214,7 @@ class SnowConnection:
         retry_backoff: float = _DEFAULT_RETRY_BACKOFF,
         request_delay: float = 0.0,
         display_value: str = "true",
+        exclude_reference_link: bool = True,
         order_by: OrderBy = DEFAULT_ORDER_BY,
         since_field: str = _DEFAULT_SINCE_FIELD,
         proxy: str | None = None,
@@ -257,6 +264,7 @@ class SnowConnection:
             )
 
         self.display_value = display_value
+        self.exclude_reference_link = exclude_reference_link
         self.order_by = order_by
         self.since_field = since_field.strip()
         self._order_clauses = normalise_order_by(order_by)
@@ -1334,6 +1342,13 @@ class SnowConnection:
         params: dict[str, str] = {
             "sysparm_limit": str(self.page_size),
             "sysparm_display_value": self.display_value,
+            # A reference field already carries the sys_id in `value` and the
+            # label in `display_value`, so the `link` beside them is a URL this
+            # library never reads. It costs response size on every reference of
+            # every record, and it carries the instance hostname into whatever
+            # consumes the documents, which for a RAG pipeline means the chunks,
+            # the embeddings and the prompt logs.
+            **({"sysparm_exclude_reference_link": "true"} if self.exclude_reference_link else {}),
             # This library walks offsets itself and never reads the Link
             # headers, so building them is work the instance does for nothing.
             # It also fails outright on a long query: asking sys_audit_delete

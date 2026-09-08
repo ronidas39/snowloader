@@ -4,6 +4,22 @@ All notable changes to snowloader are documented here. This project follows [Sem
 
 ## [Unreleased]
 
+### Added
+
+- **`exclude_reference_link` on both connections, defaulting to `True`.**
+  ServiceNow puts a `link` beside every reference field, pointing back at the
+  instance. The sys_id is already in `value` and the label is already in
+  `display_value`, so the URL is reconstructible from what is there, and nothing
+  in this library reads it.
+
+  Sending `sysparm_exclude_reference_link` drops it. That is smaller responses on
+  every reference of every record, and it keeps the instance hostname out of the
+  documents, which matters when those documents become chunks, embeddings and
+  prompt logs.
+
+  Set `exclude_reference_link=False` to get the links back. The count endpoint
+  does not send the parameter, because a count returns no records.
+
 ### Fixed
 
 - **Metadata timestamps carry the stored value, which is UTC, instead of the
