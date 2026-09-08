@@ -2,6 +2,31 @@
 
 All notable changes to snowloader are documented here. This project follows [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **Metadata timestamps carry the stored value, which is UTC, instead of the
+  displayed one.** ServiceNow returns a datetime twice under
+  `sysparm_display_value=all`: `value` is what it stores, in UTC, and
+  `display_value` is that moment rendered in the timezone of whoever signed in.
+  Measured on a developer instance, the same `opened_at` read `14:29:11` stored
+  and `07:29:11` shown. Seven hours.
+
+  Every loader put the displayed half into metadata, so anything joining a
+  document against a metric, a log or a trace was wrong by the signed-in
+  account's offset from UTC. Nothing raised, and the data looked entirely
+  reasonable, which is what made it worth fixing rather than documenting.
+
+  `page_content` is unchanged and still shows the local rendering, because that
+  text is written to be read. This affects `sys_created_on` and `sys_updated_on`
+  on every loader, plus `opened_at`, `resolved_at` and `closed_at` on incidents
+  and problems, and `start_date` and `end_date` on changes.
+
+  A caller who was compensating for the offset downstream should remove that
+  compensation. A caller who wants the local rendering can read it from
+  `page_content`, or ask the connection for `display_value="true"`.
+
 ## [0.8.1] - 2026-08-28
 
 ### Fixed

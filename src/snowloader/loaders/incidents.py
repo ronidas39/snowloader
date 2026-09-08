@@ -150,11 +150,11 @@ class IncidentLoader(BaseSnowLoader):
             "assigned_to": assigned_to,
             "assignment_group": assignment_group,
             "cmdb_ci": cmdb_ci,
-            "opened_at": opened_at,
-            "resolved_at": resolved_at,
-            "closed_at": closed_at,
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "opened_at": _raw_value(record.get("opened_at")),
+            "resolved_at": _raw_value(record.get("resolved_at")),
+            "closed_at": _raw_value(record.get("closed_at")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         return SnowDocument(

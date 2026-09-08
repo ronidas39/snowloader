@@ -99,8 +99,8 @@ class KnowledgeBaseLoader(BaseSnowLoader):
             "author": _display_value(record.get("author")),
             "kb_knowledge_base": _display_value(record.get("kb_knowledge_base")),
             "workflow_state": _display_value(record.get("workflow_state")),
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         return SnowDocument(

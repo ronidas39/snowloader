@@ -141,8 +141,8 @@ class AttachmentLoader(BaseSnowLoader):
             "table": self.table,
             "source": f"servicenow://sys_attachment/{sys_id}",
             "download_url": download_url,
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         if self._download and sys_id:
