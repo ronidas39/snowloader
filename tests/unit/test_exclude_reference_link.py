@@ -98,9 +98,7 @@ def test_the_flag_defaults_to_true_on_the_connection():
 async def test_the_async_connection_excludes_them_too():
     """The async path builds its own params, so it needs its own check."""
     # Arrange
-    connection = AsyncSnowConnection(
-        instance_url=BASE_URL, username="admin", password="secret"
-    )
+    connection = AsyncSnowConnection(instance_url=BASE_URL, username="admin", password="secret")
 
     # Act
     params = connection._build_query_params()
@@ -114,7 +112,9 @@ async def test_the_async_connection_excludes_them_too():
 async def test_the_async_connection_keeps_them_when_asked():
     # Arrange
     connection = AsyncSnowConnection(
-        instance_url=BASE_URL, username="admin", password="secret",
+        instance_url=BASE_URL,
+        username="admin",
+        password="secret",
         exclude_reference_link=False,
     )
 
