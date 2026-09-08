@@ -175,8 +175,8 @@ class CMDBLoader(BaseSnowLoader):
             "fqdn": fqdn,
             "assigned_to": assigned_to,
             "support_group": support_group,
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         if self._include_relationships:

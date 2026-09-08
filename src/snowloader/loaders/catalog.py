@@ -90,8 +90,8 @@ class CatalogLoader(BaseSnowLoader):
             "catalog": catalog,
             "price": price,
             "active": parse_boolean(active),
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         return SnowDocument(

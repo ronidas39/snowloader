@@ -130,10 +130,10 @@ class ProblemLoader(BaseSnowLoader):
             "assigned_to": assigned_to,
             "known_error": is_known_error,
             "cmdb_ci": _raw_value(record.get("cmdb_ci")),
-            "opened_at": opened_at,
-            "resolved_at": resolved_at,
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "opened_at": _raw_value(record.get("opened_at")),
+            "resolved_at": _raw_value(record.get("resolved_at")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         return SnowDocument(

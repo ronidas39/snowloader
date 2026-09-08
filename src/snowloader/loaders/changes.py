@@ -125,10 +125,10 @@ class ChangeLoader(BaseSnowLoader):
             "category": category,
             "assigned_to": assigned_to,
             "cmdb_ci": _raw_value(record.get("cmdb_ci")),
-            "start_date": start_date,
-            "end_date": end_date,
-            "sys_created_on": _display_value(record.get("sys_created_on")),
-            "sys_updated_on": _display_value(record.get("sys_updated_on")),
+            "start_date": _raw_value(record.get("start_date")),
+            "end_date": _raw_value(record.get("end_date")),
+            "sys_created_on": _raw_value(record.get("sys_created_on")),
+            "sys_updated_on": _raw_value(record.get("sys_updated_on")),
         }
 
         return SnowDocument(
